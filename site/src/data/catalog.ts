@@ -49,6 +49,31 @@ export interface ModelStats {
 }
 
 const overlays: Record<string, ModelOverlay> = {
+  'afm-de': {
+    title: 'AFM-D Encoder',
+    description:
+      'AriaCompute AFM-D Encoder: ModernBERT-large DecisionModel for typed Choice, Score and Noul. Tail truncation, 96-token options, high-K shortlist. Weights from Hugging Face or ModelScope.',
+    publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
+    capabilities: ['decision', 'encoder'],
+    keywords: ['afm', 'afm-d', 'afm-de', 'decision', 'laya', 'modernbert', 'system one', 'typesafe'],
+    rank: 3,
+    tags: {
+      latest: { summary: 'AFM-D Encoder (421M), layout afm-de-latest.' },
+    },
+  },
+  'afm-dd': {
+    title: 'AFM-D Decoder',
+    description:
+      'AriaCompute AFM-D Decoder: SemIf direct letter logits on MiniCPM5-2B (merged Q8_0 GGUF). Up to 16 options. Dual Hub (Hugging Face / ModelScope).',
+    publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
+    capabilities: ['decision', 'decoder'],
+    keywords: ['afm', 'afm-d', 'afm-dd', 'semif', 'minicpm', 'decision', 'system one', 'typesafe'],
+    rank: 4,
+    tags: {
+      latest: { summary: 'Same as afm-dd:2b.' },
+      '2b': { summary: 'Merged MiniCPM5-2B Q8_0, layout afm-dd-latest.' },
+    },
+  },
   laya: {
     stats: { tag: 'laya:en', accuracy: 0.361, latencyMs: 9.6 },
     title: 'Laya',
@@ -233,6 +258,8 @@ const planned: { key: string; label: string }[] = [
   { key: 'gliclass', label: 'GLiClass' },
   { key: 'nli', label: 'NLI zero-shot classifiers' },
   { key: 'decider', label: 'decider' },
+  { key: 'afm-de', label: 'AFM-D Encoder' },
+  { key: 'afm-dd', label: 'AFM-D Decoder' },
 ]
 
 // ---------------------------------------------------------------------------------------------

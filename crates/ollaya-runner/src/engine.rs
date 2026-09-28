@@ -86,6 +86,7 @@ pub fn batches(lens: &[usize], budget: usize, max_rows: usize) -> Vec<std::ops::
 /// Layouts this build can run.
 pub const LAYOUTS: &[&str] = &[
     "laya-markers-v1",
+    "afm-de-latest",
     "gliclass-uni-v1",
     "nli-pairs-v1",
     "decider-slots-v1",
@@ -116,7 +117,9 @@ pub fn load(
     threads: Option<usize>,
 ) -> Result<Box<dyn Engine>, Error> {
     match layout_of(&files.decision)?.as_str() {
-        "laya-markers-v1" => Ok(Box::new(OnnxModel::load_files(files, device, threads)?)),
+        "laya-markers-v1" | "afm-de-latest" => {
+            Ok(Box::new(OnnxModel::load_files(files, device, threads)?))
+        }
         "gliclass-uni-v1" => Ok(Box::new(crate::gliclass::GliclassModel::load_files(
             files, device, threads,
         )?)),

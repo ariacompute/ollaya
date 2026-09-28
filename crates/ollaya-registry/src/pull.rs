@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::Error;
+use crate::hub::{self, preferred_hub};
 use crate::manifest::{Descriptor, Manifest, ModelConfig, media};
 use crate::name::ModelName;
 use crate::store::{Store, digest_hex, sha256_hex};
@@ -160,11 +161,27 @@ impl Puller {
         Ok(manifest)
     }
 
-    fn blob_source(&self, name: &ModelName, d: &Descriptor) -> String {
-        d.urls
-            .first()
-            .cloned()
-            .unwrap_or_else(|| name.blob_url(&d.digest))
+    /// Weight URL for the preferred hub, or the registry blob URL when `urls` is empty.
+    fn blob_sources(&self, name: &ModelName, d: &Descriptor) -> Vec<String> {
+        if d.urls.is_empty() {
+            return vec![name.blob_url(&d.digest)];
+        }
+        let hub = preferred_hub();
+        let mut out = Vec::with_capacity(2);
+        if let Some(u) = hub::select_url(&d.urls, hub) {
+            out.push(u.to_owned());
+        }
+        if let Some(u) = hub::fallback_url(&d.urls, hub, out.first().map(|s| s.as_str()).unwrap_or(""))
+        {
+            out.push(u.to_owned());
+        }
+        // Any remaining urls (registry mirrors, etc.) after the hub pair.
+        for u in &d.urls {
+            if !out.iter().any(|x| x == u) {
+                out.push(u.clone());
+            }
+        }
+        out
     }
 
     async fn download(
@@ -173,7 +190,7 @@ impl Puller {
         d: &Descriptor,
         progress: &(dyn Fn(Progress) + Send + Sync),
     ) -> Result<(), Error> {
-        let url = self.blob_source(name, d);
+        let sources = self.blob_sources(name, d);
         let final_path = self.store.blob_path(&d.digest)?;
         let partial = PathBuf::from(format!("{}-partial", final_path.display()));
         let state_path = PathBuf::from(format!("{}-partial.json", final_path.display()));
@@ -187,31 +204,54 @@ impl Puller {
         };
         report(0);
 
-        let parts = if d.size <= SINGLE_STREAM_MAX {
-            self.fetch_whole(&url, &partial, d.size, &report).await?;
-            None
-        } else {
-            Some(
-                self.fetch_ranges(&url, &partial, &state_path, d.size, &report)
-                    .await?,
-            )
-        };
-
-        let got = hash_file(&partial).await?;
-        if got != digest_hex(&d.digest)? {
-            let _ = tokio::fs::remove_file(&partial).await;
-            let _ = tokio::fs::remove_file(&state_path).await;
-            return Err(Error::DigestMismatch {
-                expected: d.digest.clone(),
-                got: format!("sha256:{got}"),
-            });
+        let mut last_err = None;
+        for (i, url) in sources.iter().enumerate() {
+            if i > 0 {
+                let _ = tokio::fs::remove_file(&partial).await;
+                let _ = tokio::fs::remove_file(&state_path).await;
+                progress(Progress::status(format!(
+                    "retrying {} via {}",
+                    short(&d.digest),
+                    hub_label(url)
+                )));
+            }
+            let result = if d.size <= SINGLE_STREAM_MAX {
+                self.fetch_whole(url, &partial, d.size, &report)
+                    .await
+                    .map(|_| None)
+            } else {
+                self.fetch_ranges(url, &partial, &state_path, d.size, &report)
+                    .await
+                    .map(Some)
+            };
+            match result {
+                Ok(parts) => {
+                    let got = hash_file(&partial).await?;
+                    if got != digest_hex(&d.digest)? {
+                        let _ = tokio::fs::remove_file(&partial).await;
+                        let _ = tokio::fs::remove_file(&state_path).await;
+                        last_err = Some(Error::DigestMismatch {
+                            expected: d.digest.clone(),
+                            got: format!("sha256:{got}"),
+                        });
+                        continue;
+                    }
+                    tokio::fs::rename(&partial, &final_path).await?;
+                    if parts.is_some() {
+                        let _ = tokio::fs::remove_file(&state_path).await;
+                    }
+                    report(d.size);
+                    return Ok(());
+                }
+                Err(e) if e.is_retryable() || i + 1 < sources.len() => {
+                    last_err = Some(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
-        tokio::fs::rename(&partial, &final_path).await?;
-        if parts.is_some() {
-            let _ = tokio::fs::remove_file(&state_path).await;
-        }
-        report(d.size);
-        Ok(())
+        Err(last_err.unwrap_or_else(|| {
+            Error::Corrupt(format!("no download URL for {}", d.digest))
+        }))
     }
 
     async fn fetch_whole(
@@ -414,6 +454,16 @@ async fn fetch_part(
 
 fn backoff(attempt: u32) -> Duration {
     Duration::from_millis(500 * 2u64.pow(attempt.min(6)))
+}
+
+fn hub_label(url: &str) -> &'static str {
+    if url.contains("modelscope.") {
+        "modelscope"
+    } else if url.contains("huggingface.co") || url.contains("hf-mirror.com") {
+        "huggingface"
+    } else {
+        "mirror"
+    }
 }
 
 async fn hash_file(path: &Path) -> Result<String, Error> {

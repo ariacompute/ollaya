@@ -96,10 +96,13 @@ numbers: [ollaya.dev/search](https://ollaya.dev/search).
 | `winnow` | EldanRing's Winnow-12B, the larger sibling of `winnow:e4b`: 0.702 on typed-decisions |
 | `clm` | Contrastive-LM's CLM-v0.1-8B: the Qwen3-8B encoder and two projection heads score options by similarity, with questions and options cached. 0.357 on typed-decisions; built for agent, game and tool-calling states |
 | `jevk5` | alibiserikbay's JevK5 v0.3, a Qwen3.5-4B fine-tune run from the author's Q8_0 GGUF on llama.cpp, up to 16 options |
+| `afm-de` | AriaCompute AFM-D Encoder (ModernBERT DecisionModel): tail truncation, 96-token options, high-K shortlist; weights from Hugging Face or ModelScope |
+| `afm-dd` | AriaCompute AFM-D Decoder (MiniCPM5-2B SemIf): letter logits A–P on llama.cpp; dual Hub |
 
 Browse them at [ollaya.dev/search](https://ollaya.dev/search). Laya tags ending in
 `-fp32` or `-fp16` pin the precision. The derived files of every model are also published at
-[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev).
+[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev). AFM-D weight layers list both
+Hugging Face and ModelScope URLs; set `OLLAYA_HUB=huggingface|modelscope|auto` to choose.
 
 ## Install
 
@@ -116,7 +119,7 @@ Browse them at [ollaya.dev/search](https://ollaya.dev/search). Laya tags ending 
   (`:cuda12` for host drivers older than R580), or `ghcr.io/ollaya-dev/ollaya` for CPU only.
 
 Configuration is through environment variables: `OLLAYA_HOST`, `OLLAYA_MODELS`,
-`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY` and others, listed in
+`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY`, `OLLAYA_HUB` and others, listed in
 [docs/api.md §15](docs/api.md).
 
 ## Repository

@@ -49,6 +49,7 @@ MEDIA = {
     "gguf": "application/vnd.ollaya.weights.gguf",
 }
 HF = "https://huggingface.co"
+MS = "https://www.modelscope.cn/models"
 
 
 def sha256(b):
@@ -73,6 +74,18 @@ def hf_file(repo, commit, path):
     with urllib.request.urlopen(url) as r:  # small git file: hash it ourselves
         data = r.read()
     return url, len(data), sha256(data)
+
+
+def ms_resolve_url(ms_repo, revision, path):
+    """ModelScope file resolve URL (same bytes as the HF pin when upload scripts sync)."""
+    return "%s/%s/resolve/%s/%s" % (MS, ms_repo, revision or "master", path)
+
+
+def dual_urls(hf_url, ms_repo, ms_revision, path):
+    """HF + ModelScope urls for a weight layer (order fixed; puller picks by OLLAYA_HUB)."""
+    if not ms_repo:
+        return [hf_url]
+    return [hf_url, ms_resolve_url(ms_repo, ms_revision, path)]
 
 
 class Blobs:
@@ -101,9 +114,25 @@ def hf_commit_date(repo, commit):
         return json.load(r)["lastModified"][:10]
 
 
-def upstream(media_type, repo, commit, path):
+def upstream(media_type, repo, commit, path, ms_repo=None, ms_revision=None):
     url, size, oid = hf_file(repo, commit, path)
-    return {"mediaType": media_type, "digest": "sha256:" + oid, "size": size, "urls": [url]}
+    return {
+        "mediaType": media_type,
+        "digest": "sha256:" + oid,
+        "size": size,
+        "urls": dual_urls(url, ms_repo, ms_revision, path),
+    }
+
+
+def upstream_from_variant(media_type, v, path, repo=None, commit=None):
+    """`upstream` using optional `modelscope_repo` / `modelscope_revision` on a catalog variant."""
+    repo = repo or v["repo"]
+    commit = commit or v["commit"]
+    return upstream(
+        media_type, repo, commit, path,
+        ms_repo=v.get("modelscope_repo"),
+        ms_revision=v.get("modelscope_revision") or "master",
+    )
 
 
 def hf_json(repo, commit, path):
@@ -162,7 +191,10 @@ def package_wl(spec, tag, v, blobs):
     oids, weights, locals_ = {}, [], []
     for location, source in v["weights"].items():
         w_repo, w_commit, path = source if isinstance(source, tuple) else (repo, commit, source)
-        d = upstream(MEDIA["weights"], w_repo, w_commit, path)
+        # Dual-hub only when the weight file lives in the catalog model's own repos.
+        ms = (v.get("modelscope_repo"), v.get("modelscope_revision") or "master") \
+            if (w_repo, w_commit) == (repo, commit) else (None, None)
+        d = upstream(MEDIA["weights"], w_repo, w_commit, path, ms_repo=ms[0], ms_revision=ms[1])
         oid = d["digest"].split(":", 1)[1]
         local = os.path.join(v["wl_dir"], location)
         with open(local, "rb") as f:  # the local copy must be the pinned upstream file
@@ -183,9 +215,13 @@ def package_wl(spec, tag, v, blobs):
         data, stats = graph_from_wl(v["wl_dir"], oids, "vision.onnx")
         print("  %s:%s vision graph %.1f MB %s" % (spec["model"], tag, len(data) / 2**20, stats))
         vision = [blobs.put(MEDIA["graph"], data, {"org.ollaya.precision": "fp32", "org.ollaya.graph": "vision"})]
-    # The tokenizer comes from the model's repo, or from another one (a base model's) as a triple.
+    # Tokenizer from this model's repo (dual Hub when catalog sets modelscope_*), or a base
+    # model's as a (repo, commit, path) triple (HF-only).
     t = v["tokenizer"]
-    tokenizer = upstream(MEDIA["tokenizer"], *(t if isinstance(t, tuple) else (repo, commit, t)))
+    if isinstance(t, tuple):
+        tokenizer = upstream(MEDIA["tokenizer"], *t)
+    else:
+        tokenizer = upstream_from_variant(MEDIA["tokenizer"], v, t)
     decision_bytes = open(os.path.join(v["wl_dir"], "decision.json"), "rb").read()
     decision = blobs.put(MEDIA["decision"], decision_bytes)
     calibration = blobs.put(MEDIA["calibration"], open(os.path.join(v["wl_dir"], "calibration.json"), "rb").read())
@@ -196,10 +232,13 @@ def package_wl(spec, tag, v, blobs):
     ctx = dj.get("max_len") or dj.get("max_length") or v["context_length"]
     license_id = v.get("license") or spec["license"]
     lic = blobs.put(MEDIA["license"], (v.get("license_text") or spec["license_text"]).encode())
+    source = "huggingface.co/%s@%s" % (repo, commit)
+    if v.get("modelscope_repo"):
+        source += "; modelscope.cn/%s" % v["modelscope_repo"]
     config = blobs.put(MEDIA["config"], json.dumps({
         "model_format": "onnx", "family": spec["family"], "parameter_size": v["parameter_size"],
         "context_length": ctx, "languages": v["languages"], "description": v["description"],
-        "source": "huggingface.co/%s@%s" % (repo, commit), "license": license_id,
+        "source": source, "license": license_id,
         "release_date": hf_commit_date(repo, commit),
     }, indent=2).encode())
     return config, [graph] + vision + weights + [tokenizer, decision, calibration] + questions + [lic] + arch
@@ -209,7 +248,7 @@ def package_gguf(spec, tag, v, blobs):
     """One tag of a GGUF model, run by llama.cpp: the author's GGUF, unmodified, plus the derived
     decision.json and calibration.json (`llm_common/export_llama.py`)."""
     repo, commit = v["repo"], v["commit"]
-    gguf = upstream(MEDIA["gguf"], repo, commit, v["gguf"])
+    gguf = upstream_from_variant(MEDIA["gguf"], v, v["gguf"])
     oid = gguf["digest"].split(":", 1)[1]
     decision_bytes = open(os.path.join(v["export_dir"], "decision.json"), "rb").read()
     dj = json.loads(decision_bytes)
@@ -225,11 +264,14 @@ def package_gguf(spec, tag, v, blobs):
         with urllib.request.urlopen("%s/%s/resolve/%s/%s" % (HF, repo, commit, v["notice"])) as r:
             text = r.read().decode() + "\n" + text
     lic = blobs.put(MEDIA["license"], text.encode())
+    source = "huggingface.co/%s@%s" % (repo, commit)
+    if v.get("modelscope_repo"):
+        source += "; modelscope.cn/%s" % v["modelscope_repo"]
     config = blobs.put(MEDIA["config"], json.dumps({
         "model_format": "gguf", "engine": "llama", "layout": dj["layout"], "family": spec["family"],
         "parameter_size": v["parameter_size"], "context_length": dj["llama"]["n_ctx"],
         "languages": v["languages"], "description": v["description"],
-        "source": "huggingface.co/%s@%s" % (repo, commit), "license": v.get("license") or spec["license"],
+        "source": source, "license": v.get("license") or spec["license"],
         "release_date": hf_commit_date(repo, commit),
     }, indent=2).encode())
     print("  %s:%s %s %.2f GB (%s)" % (spec["model"], tag, pin["quantization"], gguf["size"] / 1e9, v["gguf"]))
@@ -255,8 +297,8 @@ def package_model(spec, blobs):
                     write_manifest(ns, model, alias, config, layers)
             continue
         repo, commit = v["repo"], v["commit"]
-        weights = upstream(MEDIA["weights"], repo, commit, v["weights"])
-        tokenizer = upstream(MEDIA["tokenizer"], repo, commit, v["tokenizer"])
+        weights = upstream_from_variant(MEDIA["weights"], v, v["weights"])
+        tokenizer = upstream_from_variant(MEDIA["tokenizer"], v, v["tokenizer"])
         oid = weights["digest"].split(":", 1)[1]
         with open(v["checkpoint"], "rb") as f:  # the local copy must be the pinned upstream file
             if hashlib.file_digest(f, "sha256").hexdigest() != oid:
@@ -269,10 +311,13 @@ def package_model(spec, blobs):
         export0 = next(iter(v["exports"].values()))
         decision = blobs.put(MEDIA["decision"], open(os.path.join(export0, "decision.json"), "rb").read())
         calibration = blobs.put(MEDIA["calibration"], open(os.path.join(export0, "calibration.json"), "rb").read())
+        source = "huggingface.co/%s@%s" % (repo, commit)
+        if v.get("modelscope_repo"):
+            source += "; modelscope.cn/%s" % v["modelscope_repo"]
         config = blobs.put(MEDIA["config"], json.dumps({
             "model_format": "onnx", "family": spec["family"], "parameter_size": v["parameter_size"],
             "context_length": v["context_length"], "languages": v["languages"],
-            "description": v["description"], "source": "huggingface.co/%s@%s" % (repo, commit),
+            "description": v["description"], "source": source,
             "license": spec["license"], "release_date": hf_commit_date(repo, commit),
         }, indent=2).encode())
         layers = graphs + [weights, tokenizer, decision, calibration, lic] + arch_layers(v, blobs, v["checkpoint"])

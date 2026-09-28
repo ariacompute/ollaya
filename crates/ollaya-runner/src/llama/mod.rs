@@ -1,5 +1,5 @@
-//! The llama.cpp engine: GGUF decision models (`winnow-v1`, `llm-logits-v1`, `jevk5-v1`) on
-//! libllama, inside the runner process (docs/decisions/0003-llama-cpp-runtime.md).
+//! The llama.cpp engine: GGUF decision models (`winnow-v1`, `llm-logits-v1`, `jevk5-v1`,
+//! `afm-dd-latest`) on libllama, inside the runner process (docs/decisions/0003-llama-cpp-runtime.md).
 //!
 //! The libraries are llama.cpp's own release build, loaded at run time from the install
 //! (`lib/ollaya/llama`, plus `libggml-cuda.so` from the CUDA pack): see [`ffi`]. The layouts in
@@ -24,6 +24,7 @@ use std::ptr::NonNull;
 use std::sync::Mutex;
 
 use ollaya_decision::Questions;
+use ollaya_decision::afm_dd::{self, AfmDdConfig};
 use ollaya_decision::jevk5::{self, JevK5Config};
 use ollaya_decision::llm_logits::{self, LlmLogitsConfig};
 use ollaya_decision::winnow::{self, WinnowConfig};
@@ -34,7 +35,12 @@ use crate::{Error, Output, QuestionOutput};
 use ffi::{Api, Batch, Token};
 
 /// Layouts the llama engine runs.
-pub const LAYOUTS: &[&str] = &[llm_logits::LAYOUT, winnow::LAYOUT, jevk5::LAYOUT];
+pub const LAYOUTS: &[&str] = &[
+    llm_logits::LAYOUT,
+    winnow::LAYOUT,
+    jevk5::LAYOUT,
+    afm_dd::LAYOUT,
+];
 
 /// Tokens per `llama_decode` call and per physical batch: llama-server's defaults, which the
 /// goldens' reference runs with.
@@ -106,6 +112,10 @@ enum Layout {
     },
     Winnow(WinnowConfig),
     JevK5(JevK5Config),
+    AfmDd {
+        cfg: AfmDdConfig,
+        bos: Option<Token>,
+    },
 }
 
 /// One question, ready to evaluate.
@@ -466,6 +476,13 @@ fn prepare(vocab: &Vocab, decision: &Value) -> Result<Layout, Error> {
             cfg.validate().map_err(bad)?;
             Layout::JevK5(cfg)
         }
+        Some(afm_dd::LAYOUT) => {
+            let cfg: AfmDdConfig = serde_json::from_value(decision.clone()).map_err(parse_error)?;
+            cfg.validate().map_err(bad)?;
+            let x = vocab.tokenize("x", true, false)?;
+            let bos = (x.len() == 2).then(|| x[0]);
+            Layout::AfmDd { cfg, bos }
+        }
         other => {
             return Err(model_error(format!(
                 "the llama engine cannot run layout {other:?}"
@@ -478,6 +495,7 @@ fn prepare(vocab: &Vocab, decision: &Value) -> Result<Layout, Error> {
         }
         Layout::Winnow(cfg) => vec![&cfg.labels],
         Layout::JevK5(cfg) => vec![&cfg.labels],
+        Layout::AfmDd { cfg, .. } => vec![&cfg.labels],
     };
     for table in tables {
         for (s, &id) in table.strings.iter().zip(&table.ids) {
@@ -694,6 +712,41 @@ impl LlamaModel {
                 for (qid, q) in prompts {
                     let ids =
                         jevk5::token_ids(&q.user, |t, special| vocab.tokenize(t, false, special))?;
+                    if ids.len() >= n_ctx {
+                        return Err(ollaya_decision::Error::invalid(format!(
+                            "question {qid:?}: the prompt is {} tokens, and the model's context \
+                             holds {n_ctx}; shorten the state, the question or its options",
+                            ids.len()
+                        ))
+                        .into());
+                    }
+                    rows.push((
+                        qid,
+                        Row {
+                            ids,
+                            p: 0,
+                            candidates: q.label_ids.iter().map(|&t| t as Token).collect(),
+                            wire_order: q.wire_order,
+                        },
+                    ));
+                }
+                Ok(Encoded {
+                    rows,
+                    state_tokens,
+                    state_truncated: false,
+                })
+            }
+            Layout::AfmDd { cfg, bos } => {
+                let prompts = cfg.questions(state, questions)?;
+                let state_tokens = vocab
+                    .tokenize(&afm_dd::render_state(state), false, false)?
+                    .len();
+                let n_ctx = self.settings.n_ctx;
+                let mut rows = Vec::with_capacity(prompts.len());
+                for (qid, q) in prompts {
+                    let ids = afm_dd::token_ids(&q.user, *bos, |t, special| {
+                        vocab.tokenize(t, false, special)
+                    })?;
                     if ids.len() >= n_ctx {
                         return Err(ollaya_decision::Error::invalid(format!(
                             "question {qid:?}: the prompt is {} tokens, and the model's context \
