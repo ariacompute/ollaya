@@ -1,0 +1,38 @@
+{
+  "engine": "onnx",
+  "family": "afm-de",
+  "layout": "afm-de-latest",
+  "encoder": "answerdotai/ModernBERT-large",
+  "max_len": 1024,
+  "head_max_len": 512,
+  "option_desc_max": 96,
+  "state_truncation": "tail",
+  "shortlist": {
+    "threshold": 40,
+    "k": 20
+  },
+  "special_tokens": {
+    "cls": 50281,
+    "sep": 50282,
+    "mask": 50284,
+    "pad": 50283,
+    "mask_text": "[MASK]"
+  },
+  "inputs": [
+    "input_ids",
+    "attention_mask",
+    "marker_pos",
+    "marker_mask",
+    "qtype"
+  ],
+  "outputs": [
+    "logits",
+    "act_logits"
+  ],
+  "min_markers": 2,
+  "hubs": {
+    "huggingface": "ariacompute/afm-de",
+    "modelscope": "AriaCompute/afm-de"
+  },
+  "opset": 23
+}

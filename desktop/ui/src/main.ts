@@ -99,12 +99,18 @@ const state = {
 const EXAMPLE = "My order never arrived and support ignores me. Refund me today or I'm switching to your competitor."
 
 /**
- * The versions to offer: `<model>:latest` first (what `ollaya run <model>` uses), then the main tags.
- * Precision variants (-fp16, -fp32) are for pinning, not for picking.
+ * The versions to offer: `<model>:latest` first (what `ollaya run <model>` uses, which the
+ * library index doesn't always list), then the main tags. Precision variants (-fp16, -fp32) are
+ * for pinning, not for picking.
+ *
+ * Families whose listed tags already use other pull names (afm-d → afm-de:latest / afm-dd:latest)
+ * keep those names as-is — do not invent `<family>:latest`.
  */
 const mainTags = (m: LibraryModel) => {
   const tags = m.tags.map((t) => t.name).filter((n) => !/-fp(16|32)$/.test(n))
   const latest = `${m.name}:latest`
+  const ownsPrefix = tags.some((t) => t === latest || t.startsWith(`${m.name}:`))
+  if (!ownsPrefix) return tags.length ? tags : [latest]
   return [latest, ...tags.filter((t) => t !== latest)]
 }
 const tagOf = (m: LibraryModel, tag: string) => m.tags.find((t) => t.name === tag)

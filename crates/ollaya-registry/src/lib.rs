@@ -1,10 +1,12 @@
 //! Model names, manifests, the local blob store, and pulling from a registry.
 
+pub mod hub;
 pub mod manifest;
 pub mod name;
 pub mod pull;
 pub mod store;
 
+pub use hub::{PublicHub, preferred_hub};
 pub use manifest::{Descriptor, Manifest, ModelConfig, Router, media};
 pub use name::ModelName;
 pub use pull::{Progress, Puller};

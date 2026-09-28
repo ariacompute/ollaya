@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
-use ollaya_decision::{cygnet, jebadiah, jevk5, llm_logits, snap, winnow};
+use ollaya_decision::{afm_dd, cygnet, jebadiah, jevk5, llm_logits, snap, winnow};
 use ollaya_registry::pull::RunCheck;
 
 use crate::Error;
@@ -104,6 +104,7 @@ pub const LLAMA_LAYOUTS: &[&str] = &[
     cygnet::LAYOUT,
     snap::LAYOUT,
     ollaya_decision::d1::LAYOUT,
+    afm_dd::LAYOUT,
 ];
 
 #[derive(Debug, Deserialize)]

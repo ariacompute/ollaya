@@ -1,0 +1,15 @@
+{
+  "model_format": "gguf",
+  "engine": "llama",
+  "layout": "afm-dd-latest",
+  "family": "afm-dd",
+  "parameter_size": "2B",
+  "context_length": 4096,
+  "languages": [
+    "en"
+  ],
+  "description": "AFM-D Decoder (MiniCPM5-2B + SemIf LoRA), Q8_0 GGUF: option-letter logits A\u2013P after a SemIf direct prompt (up to 16 options).",
+  "source": "huggingface.co/ariacompute/afm-dd@72dd5393443afdde57dcd242385c61620378c591; modelscope.cn/AriaCompute/afm-dd",
+  "license": "MIT",
+  "release_date": "2026-10-09"
+}
