@@ -24,12 +24,8 @@ impl PublicHub {
     /// True when `url` is served by this hub.
     pub fn matches_url(self, url: &str) -> bool {
         match self {
-            Self::HuggingFace => {
-                url.contains("huggingface.co/") || url.contains("hf-mirror.com/")
-            }
-            Self::ModelScope => {
-                url.contains("modelscope.cn/") || url.contains("modelscope.com/")
-            }
+            Self::HuggingFace => url.contains("huggingface.co/") || url.contains("hf-mirror.com/"),
+            Self::ModelScope => url.contains("modelscope.cn/") || url.contains("modelscope.com/"),
         }
     }
 }
@@ -101,12 +97,16 @@ mod tests {
             "https://www.modelscope.cn/models/AriaCompute/afm-de/resolve/master/model.safetensors"
                 .into(),
         ];
-        assert!(select_url(&urls, PublicHub::HuggingFace)
-            .unwrap()
-            .contains("huggingface.co"));
-        assert!(select_url(&urls, PublicHub::ModelScope)
-            .unwrap()
-            .contains("modelscope.cn"));
+        assert!(
+            select_url(&urls, PublicHub::HuggingFace)
+                .unwrap()
+                .contains("huggingface.co")
+        );
+        assert!(
+            select_url(&urls, PublicHub::ModelScope)
+                .unwrap()
+                .contains("modelscope.cn")
+        );
     }
 
     #[test]

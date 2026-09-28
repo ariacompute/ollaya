@@ -171,7 +171,8 @@ impl Puller {
         if let Some(u) = hub::select_url(&d.urls, hub) {
             out.push(u.to_owned());
         }
-        if let Some(u) = hub::fallback_url(&d.urls, hub, out.first().map(|s| s.as_str()).unwrap_or(""))
+        if let Some(u) =
+            hub::fallback_url(&d.urls, hub, out.first().map(|s| s.as_str()).unwrap_or(""))
         {
             out.push(u.to_owned());
         }
@@ -249,9 +250,7 @@ impl Puller {
                 Err(e) => return Err(e),
             }
         }
-        Err(last_err.unwrap_or_else(|| {
-            Error::Corrupt(format!("no download URL for {}", d.digest))
-        }))
+        Err(last_err.unwrap_or_else(|| Error::Corrupt(format!("no download URL for {}", d.digest))))
     }
 
     async fn fetch_whole(
