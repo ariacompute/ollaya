@@ -1,0 +1,16 @@
+{
+  "temperature": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "temperature_by_options": {
+    "choice:11+": 1.2,
+    "choice:2": 1.3,
+    "choice:3-5": 1.35,
+    "choice:6-10": 1.0,
+    "noul:2": 1.4,
+    "score:3-5": 1.15
+  },
+  "source": "AFM-D Encoder: decision temperature fixed at 1.0"
+}

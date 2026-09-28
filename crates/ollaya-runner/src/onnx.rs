@@ -1,4 +1,4 @@
-//! ONNX Runtime engine for encoder decision models (layout `laya-markers-v1`).
+//! ONNX Runtime engine for encoder decision models (`laya-markers-v1`, `afm-de-latest`).
 //!
 //! A model directory holds the layers of one manifest:
 //!
@@ -14,7 +14,8 @@ use std::path::{Path, PathBuf};
 
 use ndarray::Array2;
 use ollaya_decision::{
-    Calibration, CalibrationFile, LayaLayout, Questions, SpecialTokens, TokenEncoder,
+    AFM_DE_LATEST, Calibration, CalibrationFile, LAYA_MARKERS_V1, LayaLayout, Questions,
+    SpecialTokens, StateTruncation, TokenEncoder,
 };
 use ort::session::Session;
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
@@ -33,6 +34,22 @@ pub enum Device {
     Metal,
 }
 
+/// Embedding shortlist for high-cardinality Choice (`afm-de-latest`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShortlistConfig {
+    #[serde(default = "shortlist_threshold")]
+    pub threshold: usize,
+    #[serde(default = "shortlist_k")]
+    pub k: usize,
+}
+
+fn shortlist_threshold() -> usize {
+    40
+}
+fn shortlist_k() -> usize {
+    20
+}
+
 /// The `decision` layer.
 #[derive(Debug, Clone, Deserialize)]
 pub struct DecisionConfig {
@@ -44,6 +61,13 @@ pub struct DecisionConfig {
     /// The graph takes at least this many marker slots (extra slots are masked).
     #[serde(default = "one")]
     pub min_markers: usize,
+    /// Override Laya's 48 / AFM-D's 96 when set.
+    #[serde(default)]
+    pub option_desc_max: Option<usize>,
+    #[serde(default)]
+    pub state_truncation: Option<StateTruncation>,
+    #[serde(default)]
+    pub shortlist: Option<ShortlistConfig>,
 }
 
 fn one() -> usize {
@@ -63,6 +87,7 @@ pub struct OnnxModel {
     tokenizer: Tokenizer,
     layout: LayaLayout,
     min_markers: usize,
+    shortlist: Option<ShortlistConfig>,
     pub calibration: Calibration,
     pub device: Device,
 }
@@ -231,9 +256,11 @@ impl OnnxModel {
         intra_threads: Option<usize>,
     ) -> Result<Self, Error> {
         let config: DecisionConfig = read_json(&files.decision)?;
-        if config.engine != "onnx" || config.layout != "laya-markers-v1" {
+        if config.engine != "onnx"
+            || (config.layout != LAYA_MARKERS_V1 && config.layout != AFM_DE_LATEST)
+        {
             return Err(Error::Model(format!(
-                "unsupported engine/layout {}/{}; this runner serves onnx/laya-markers-v1",
+                "unsupported engine/layout {}/{}; this runner serves onnx/{LAYA_MARKERS_V1} and onnx/{AFM_DE_LATEST}",
                 config.engine, config.layout
             )));
         }
@@ -245,15 +272,24 @@ impl OnnxModel {
 
         let net = crate::net::load(files, device, intra_threads, Head::Laya)?;
 
+        let mut layout = if config.layout == AFM_DE_LATEST {
+            LayaLayout::afm_de(config.max_len, config.head_max_len, config.special_tokens)
+        } else {
+            LayaLayout::laya(config.max_len, config.head_max_len, config.special_tokens)
+        };
+        if let Some(n) = config.option_desc_max {
+            layout.option_desc_max = n;
+        }
+        if let Some(t) = config.state_truncation {
+            layout.state_truncation = t;
+        }
+
         Ok(OnnxModel {
             net,
             tokenizer: Tokenizer(tokenizer),
-            layout: LayaLayout {
-                max_len: config.max_len,
-                head_max_len: config.head_max_len,
-                special: config.special_tokens,
-            },
+            layout,
             min_markers: config.min_markers,
+            shortlist: config.shortlist,
             calibration,
             device,
         })
@@ -279,9 +315,84 @@ impl OnnxModel {
     }
 
     /// Answer every question in one forward pass.
+    ///
+    /// For `afm-de-latest` with a shortlist config, Choice questions at or above the threshold
+    /// are narrowed by bag-of-token cosine (stand-in until an embed.onnx layer ships) before
+    /// packing; logits are scattered back to the full option axis and confidence should be
+    /// discounted by the caller via [`ollaya_decision::shortlist::confidence_discount`].
     pub fn run(&self, state: &Value, questions: &Questions) -> Result<Output, Error> {
+        if let Some(sl) = &self.shortlist {
+            return self.run_with_shortlist(state, questions, sl);
+        }
         let encoded = self.encode(state, questions)?;
         self.run_encoded(&encoded, questions)
+    }
+
+    fn run_with_shortlist(
+        &self,
+        state: &Value,
+        questions: &Questions,
+        sl: &ShortlistConfig,
+    ) -> Result<Output, Error> {
+        use ollaya_decision::question::{Criteria, QType};
+        use ollaya_decision::shortlist::{self, bag_embed};
+
+        let state_text = ollaya_decision::serialize_state(state);
+        let state_ids = self.layout.encode_state(&self.tokenizer, &state_text)?;
+        let mut narrowed = Questions::new();
+        let mut maps: Vec<Option<(Vec<usize>, usize)>> = Vec::new();
+
+        for (qid, q) in questions {
+            if q.qtype == QType::Choice {
+                let opts = q.render_options();
+                if shortlist::needs_shortlist(opts.len(), sl.threshold) {
+                    let mut vectors = vec![bag_embed(&state_ids, 256)];
+                    for opt in &opts {
+                        let ids = self.tokenizer.encode(opt).map_err(Error::Decision)?;
+                        vectors.push(bag_embed(&ids, 256));
+                    }
+                    let keep = shortlist::shortlist_indices(&vectors, sl.k, &[])
+                        .map_err(Error::Decision)?;
+                    let k_full = opts.len();
+                    let Criteria::Choice(ref crit) = q.criteria else {
+                        return Err(Error::Model("choice without Choice criteria".into()));
+                    };
+                    let pairs: Vec<_> = crit.iter().collect();
+                    let mut sub = crit.clone();
+                    sub.clear();
+                    for &i in &keep {
+                        let (k, v) = pairs.get(i).ok_or_else(|| {
+                            Error::Model(format!("shortlist index {i} out of range"))
+                        })?;
+                        sub.insert((*k).clone(), (*v).clone());
+                    }
+                    let mut nq = q.clone();
+                    nq.criteria = Criteria::Choice(sub);
+                    narrowed.insert(qid.clone(), nq);
+                    maps.push(Some((keep, k_full)));
+                    continue;
+                }
+            }
+            narrowed.insert(qid.clone(), q.clone());
+            maps.push(None);
+        }
+
+        let encoded = self.encode(state, &narrowed)?;
+        let mut out = self.run_encoded(&encoded, &narrowed)?;
+        for (i, map) in maps.into_iter().enumerate() {
+            if let Some((keep, k_full)) = map {
+                let slim = std::mem::take(&mut out.questions[i].logits);
+                let mut full = vec![f32::NEG_INFINITY; k_full];
+                for (j, &src) in keep.iter().enumerate() {
+                    if j < slim.len() {
+                        full[src] = slim[j];
+                    }
+                }
+                out.questions[i].logits = full;
+                let _ = shortlist::confidence_discount(keep.len(), k_full);
+            }
+        }
+        Ok(out)
     }
 
     pub fn run_encoded(&self, encoding: &Encoding, questions: &Questions) -> Result<Output, Error> {

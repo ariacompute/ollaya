@@ -1,8 +1,9 @@
 name: Desktop app
 
 # Builds the Tauri app (desktop/) for macOS, Windows and Linux, with the `ollaya` engine bundled
-# inside (externalBin). A v* tag attaches the installers to that release; running it by hand
-# (workflow_dispatch) builds them as workflow artifacts only.
+# inside (externalBin). A v* tag (including SemVer build-metadata tags like v0.7.5+afm-d.1.0.0)
+# attaches the installers to that release; running it by hand (workflow_dispatch) builds them as
+# workflow artifacts only.
 #
 # Signing is on when its secrets exist:
 #   macOS   APPLE_CERTIFICATE (base64 .p12 of the "Developer ID Application" certificate),
@@ -11,7 +12,8 @@ name: Desktop app
 #   Windows see docs/distribution.md, "Signing the desktop app".
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:

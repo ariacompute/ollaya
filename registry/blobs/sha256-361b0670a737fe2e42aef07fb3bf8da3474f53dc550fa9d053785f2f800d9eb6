@@ -1,0 +1,13 @@
+{
+  "model_format": "onnx",
+  "family": "afm-de",
+  "parameter_size": "421M",
+  "context_length": 1024,
+  "languages": [
+    "en"
+  ],
+  "description": "AFM-D Encoder (ModernBERT-large DecisionModel): typed Choice/Score/Noul with tail truncation, 96-token options, and high-K shortlist.",
+  "source": "huggingface.co/ariacompute/afm-de@5c570f648946de7879b7f2a2634f07e2e5b06180; modelscope.cn/AriaCompute/afm-de",
+  "license": "MIT",
+  "release_date": "2026-09-28"
+}

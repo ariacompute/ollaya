@@ -113,12 +113,15 @@ Or ask your own questions: `ollaya run kev --ask "Is a refund requested?" --ask 
 | `decima`, `decima:agent`, `decima:small` | A. M. Madani's Decima: multilingual encoders with a late-interaction scorer that reads every option against the state. `decima:base` is mmBERT-base (321M); `decima:agent` (2.2) is fine-tuned for coding-agent decisions and knowledge-graph judgments; `decima:small` (122M) is the smallest |
 | `largha` | Phocinae's Largha: Laya's decision network on mmBERT-small (144M), fine-tuned on the typed-decisions workflows; runs on the CPU, CUDA and the Apple GPU |
 | `arbiter` | Codekins' Arbiter v3.3 (Zyot Lab): a LoRA and a fixed 24-slot head on Gemma 3 4B IT, one forward pass per question. It answers noul, choices of up to 16 options and scores of exactly 6 levels |
+| `afm-de` | AriaCompute AFM-D Encoder (ModernBERT DecisionModel): tail truncation, 96-token options, high-K shortlist; weights from Hugging Face or ModelScope |
+| `afm-dd` | AriaCompute AFM-D Decoder (MiniCPM5-2B SemIf): letter logits A–P on llama.cpp; dual Hub |
 
 Browse them at [ollaya.dev/search](https://ollaya.dev/search); every tag's accuracy, speed and memory is on
 [Ollaya Bench](https://bench.ollaya.dev). Decoder tags ending in `-fp16` (`kev:4b-fp16`) compute in fp16 on NVIDIA
 GPUs: faster, with at least 99.5 % of their decisions the same as the base tag's. Laya's `-fp32` and `-fp16` tags
 pin the precision. The derived files of every model are also published at
-[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev).
+[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev). AFM-D weight layers list both
+Hugging Face and ModelScope URLs; set `OLLAYA_HUB=huggingface|modelscope|auto` to choose.
 
 Ollama 0.40 also serves decision models, nine of them, through the same TypeSafe wire format
 ([measured side by side](docs/measurements/2026-10-ollama-0.40.md)).
@@ -162,7 +165,7 @@ Earlier runs, the comparison with Ollama on the same GPU (on the same Nimble wei
   (`:cuda12` for host drivers older than R580), or `ghcr.io/ollaya-dev/ollaya` for CPU only.
 
 Configuration is through environment variables: `OLLAYA_HOST`, `OLLAYA_MODELS`,
-`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY` and others, listed in
+`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY`, `OLLAYA_HUB` and others, listed in
 [docs/api.md §15](docs/api.md).
 
 ## Repository
