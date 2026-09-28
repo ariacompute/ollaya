@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+  "config": {
+    "mediaType": "application/vnd.ollaya.config.v1+json",
+    "digest": "sha256:2040ac60611a0f2ef9432f9309ce9783ab0b9c170c834108f2da046dcd635292",
+    "size": 510,
+    "urls": [
+      "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-2040ac60611a0f2ef9432f9309ce9783ab0b9c170c834108f2da046dcd635292"
+    ]
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.ollaya.weights.gguf",
+      "digest": "sha256:b6e354504c34ad9f50e58fd8c731582ea8a6dec1f2890f8143d52fd67b538850",
+      "size": 2679710432,
+      "urls": [
+        "https://huggingface.co/ariacompute/afm-dd/resolve/72dd5393443afdde57dcd242385c61620378c591/gguf/afm-dd-2b-Q8_0.gguf",
+        "https://www.modelscope.cn/models/AriaCompute/afm-dd/resolve/master/gguf/afm-dd-2b-Q8_0.gguf"
+      ],
+      "annotations": {
+        "org.ollaya.quantization": "Q8_0"
+      }
+    },
+    {
+      "mediaType": "application/vnd.ollaya.decision",
+      "digest": "sha256:3a13a0a642f69b14bd01560314f7b3139a59d5f2dbb06025a67f59f72ee1b7d9",
+      "size": 1166,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-3a13a0a642f69b14bd01560314f7b3139a59d5f2dbb06025a67f59f72ee1b7d9"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.calibration",
+      "digest": "sha256:9d2b1c704a4c986d288b28288105b86320e931ee5684e91a960dd67c165e5770",
+      "size": 140,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-9d2b1c704a4c986d288b28288105b86320e931ee5684e91a960dd67c165e5770"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.license",
+      "digest": "sha256:dd92c08120102bf0989cd8e9b56b0a4dd90cf7db6e816875be0694480e567769",
+      "size": 229,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-dd92c08120102bf0989cd8e9b56b0a4dd90cf7db6e816875be0694480e567769"
+      ]
+    }
+  ]
+}

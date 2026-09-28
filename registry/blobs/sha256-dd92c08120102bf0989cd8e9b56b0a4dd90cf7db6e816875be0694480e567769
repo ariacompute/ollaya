@@ -1,0 +1,3 @@
+AFM-D Decoder by AriaCompute (https://huggingface.co/ariacompute/afm-dd, https://www.modelscope.cn/models/AriaCompute/afm-dd)
+PEFT LoRA on MiniCPM5-2B (openbmb); SemIf-style direct letter readout.
+Licensed under the MIT License.

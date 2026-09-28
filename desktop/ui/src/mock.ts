@@ -21,6 +21,16 @@ const library: LibraryModel[] = [
     readme: card('Winnow'),
   },
   {
+    name: 'afm-d',
+    description:
+      'Aria Compute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.',
+    caps: ['decision', 'encoder', 'decoder'],
+    tags: [
+      { name: 'afm-de:latest', summary: 'AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest.' },
+      { name: 'afm-dd:latest', summary: 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.' },
+    ],
+  },
+  {
     name: 'laya',
     title: 'Laya',
     publisher: 'Convai Innovations',

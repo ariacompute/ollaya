@@ -180,7 +180,7 @@ impl Store {
                         }
                         let tag = file_name(&tag);
                         let name = ModelName {
-                            host: file_name(&host).replace('_', ":"),
+                            host: ModelName::host_from_dir(&file_name(&host)),
                             namespace: file_name(&ns),
                             model: file_name(&model),
                             // A manifest pulled by digest alone lists as `model@sha256:<hex>`.
@@ -424,7 +424,7 @@ mod tests {
         assert!(
             dir.path()
                 .join(format!(
-                    "manifests/ollaya.dev/library/laya/sha256-{}",
+                    "manifests/raw.githubusercontent.com=ariacompute=ollaya=main=registry/library/laya/sha256-{}",
                     &d1[7..]
                 ))
                 .is_file()

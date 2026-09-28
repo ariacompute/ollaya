@@ -8,6 +8,9 @@
 //!
 //! Each option is scored at its own `[MASK]`. Instructions, options and state share `max_len`;
 //! options share a `head_max_len` budget.
+//!
+//! `afm-de-latest` uses the same packing with AFM-D Encoder defaults: option descriptions up to
+//! 96 tokens and long states keep the **tail** (`state_truncation: "tail"`).
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -30,8 +33,25 @@ pub struct SpecialTokens {
     pub mask_text: String,
 }
 
+/// How a state that does not fit is cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum StateTruncation {
+    /// Keep the beginning (Laya default).
+    #[default]
+    Prefix,
+    /// Keep the end (AFM-D Encoder default).
+    Tail,
+}
+
+/// Layout id constants.
+pub const LAYA_MARKERS_V1: &str = "laya-markers-v1";
+pub const AFM_DE_LATEST: &str = "afm-de-latest";
+
 /// Tokens per option before the option budget is applied (`[:48]` in laya).
-const MAX_OPTION_TOKENS: usize = 48;
+const LAYA_OPTION_DESC_MAX: usize = 48;
+/// AFM-D Encoder `OPTION_DESC_MAX`.
+const AFM_DE_OPTION_DESC_MAX: usize = 96;
 /// Minimum room left for instructions once options are placed.
 const MIN_HEAD_ROOM: usize = 16;
 /// Instructions are never cut below this many tokens.
@@ -44,6 +64,33 @@ pub struct LayaLayout {
     pub max_len: usize,
     pub head_max_len: usize,
     pub special: SpecialTokens,
+    /// Max tokens of option text after the `[MASK]` (Laya 48, AFM-D 96).
+    pub option_desc_max: usize,
+    pub state_truncation: StateTruncation,
+}
+
+impl LayaLayout {
+    /// Stock Laya packing defaults.
+    pub fn laya(max_len: usize, head_max_len: usize, special: SpecialTokens) -> Self {
+        Self {
+            max_len,
+            head_max_len,
+            special,
+            option_desc_max: LAYA_OPTION_DESC_MAX,
+            state_truncation: StateTruncation::Prefix,
+        }
+    }
+
+    /// AFM-D Encoder packing defaults.
+    pub fn afm_de(max_len: usize, head_max_len: usize, special: SpecialTokens) -> Self {
+        Self {
+            max_len,
+            head_max_len,
+            special,
+            option_desc_max: AFM_DE_OPTION_DESC_MAX,
+            state_truncation: StateTruncation::Tail,
+        }
+    }
 }
 
 /// One question's encoder input.
@@ -52,7 +99,7 @@ pub struct Encoded {
     pub ids: Vec<u32>,
     /// Position of each option's `[MASK]`, in option order.
     pub markers: Vec<usize>,
-    /// The state did not fit after the question and was cut (laya keeps its beginning).
+    /// The state did not fit after the question and was cut.
     pub state_truncated: bool,
 }
 
@@ -94,7 +141,7 @@ impl LayaLayout {
         for opt in &options {
             let mut ids = vec![self.special.mask];
             let toks = enc.encode(&format!(" {}", opt.replace(mask_text, " ")))?;
-            ids.extend(toks.into_iter().take(MAX_OPTION_TOKENS));
+            ids.extend(toks.into_iter().take(self.option_desc_max));
             opt_ids.push(ids);
         }
 
@@ -122,7 +169,14 @@ impl LayaLayout {
         }
         ids.push(self.special.sep);
         let room = self.max_len.saturating_sub(ids.len() + 1);
-        ids.extend_from_slice(&state_ids[..room.min(state_ids.len())]);
+        let take = room.min(state_ids.len());
+        match self.state_truncation {
+            StateTruncation::Prefix => ids.extend_from_slice(&state_ids[..take]),
+            StateTruncation::Tail => {
+                let start = state_ids.len().saturating_sub(take);
+                ids.extend_from_slice(&state_ids[start..]);
+            }
+        }
         ids.push(self.special.sep);
         ids.truncate(self.max_len);
         markers.retain(|&m| m < self.max_len);
@@ -139,5 +193,69 @@ impl LayaLayout {
             markers,
             state_truncated: room < state_ids.len(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::question::{Criteria, QType, Question};
+    use serde_json::json;
+
+    struct Ids;
+    impl TokenEncoder for Ids {
+        fn encode(&self, text: &str) -> Result<Vec<u32>, Error> {
+            // One token per whitespace-separated word; empty → empty.
+            Ok(text
+                .split_whitespace()
+                .enumerate()
+                .map(|(i, _)| i as u32 + 10)
+                .collect())
+        }
+    }
+
+    fn special() -> SpecialTokens {
+        SpecialTokens {
+            cls: 1,
+            sep: 2,
+            mask: 3,
+            pad: 0,
+            mask_text: "[MASK]".into(),
+        }
+    }
+
+    fn noul() -> Question {
+        Question {
+            qtype: QType::Noul,
+            instructions: "ok".into(),
+            criteria: Criteria::Noul {
+                r#false: None,
+                r#true: None,
+            },
+            definition: json!({"type": "noul"}),
+        }
+    }
+
+    #[test]
+    fn tail_keeps_end_of_state() {
+        let lay = LayaLayout::afm_de(20, 12, special());
+        let state_ids: Vec<u32> = (100..130).collect();
+        let enc = lay.encode(&Ids, &state_ids, &noul()).unwrap();
+        assert!(enc.state_truncated);
+        let st_start = enc.ids.iter().position(|&t| t >= 100).unwrap();
+        let st_end = enc.ids.iter().rposition(|&t| t >= 100).unwrap();
+        let got = &enc.ids[st_start..=st_end];
+        assert_eq!(got, &state_ids[state_ids.len() - got.len()..]);
+    }
+
+    #[test]
+    fn prefix_keeps_start() {
+        let lay = LayaLayout::laya(20, 12, special());
+        let state_ids: Vec<u32> = (100..130).collect();
+        let enc = lay.encode(&Ids, &state_ids, &noul()).unwrap();
+        let st_start = enc.ids.iter().position(|&t| t >= 100).unwrap();
+        let st_end = enc.ids.iter().rposition(|&t| t >= 100).unwrap();
+        let got = &enc.ids[st_start..=st_end];
+        assert_eq!(got, &state_ids[..got.len()]);
     }
 }
