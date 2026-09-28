@@ -2,14 +2,16 @@ name: Release
 
 # A v* tag builds the tarballs, publishes a GitHub Release with them and sha256sum.txt, and pushes
 # ghcr.io/<owner>/ollaya:{<version>,latest} (cpu, amd64 + arm64), :{<version>-cuda,cuda} and
-# :{<version>-cuda12,cuda12}. Tags with a hyphen (v0.2.0-rc.1) become prereleases and don't move
-# latest, cuda or cuda12.
+# :{<version>-cuda12,cuda12}. SemVer prerelease tags (hyphen in the version core, e.g. v0.2.0-rc.1)
+# become GitHub prereleases and don't move latest, cuda or cuda12. Build-metadata tags
+# (v0.7.5+afm-d.1.0.0) are full releases; Docker/OCI tags map '+' to '-' (OCI forbids '+').
 # Running it by hand (workflow_dispatch) builds and packages everything but publishes nothing.
 # darwin-arm64 is built with the MLX engine (docs/decisions/0001-mlx-engine.md) for macOS 14 and
 # later, and also packages ollaya-darwin-arm64-mlx (its Metal library).
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -63,6 +65,18 @@ jobs:
           version=${GITHUB_REF_NAME#v}
           [ "$PUBLISH" = true ] || version=0.0.0-dev.${GITHUB_SHA::7}
           echo "version=$version" >>"$GITHUB_OUTPUT"
+          # SemVer: only the core (before '+') decides prerelease; afm-d in build metadata
+          # must not force prerelease / skip :latest.
+          core=${version%%+*}
+          if [[ $core == *-* ]]; then
+            echo "prerelease=true" >>"$GITHUB_OUTPUT"
+            echo "move_latest=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >>"$GITHUB_OUTPUT"
+            echo "move_latest=true" >>"$GITHUB_OUTPUT"
+          fi
+          # Docker/OCI reference tags disallow '+'.
+          echo "docker_version=${version//+/-}" >>"$GITHUB_OUTPUT"
       - name: Free disk space
         if: matrix.platform == 'linux-amd64'
         # Two GPU packs (about 2.4 and 3.4 GB of libraries, plus their wheels and archives) on top
@@ -248,13 +262,26 @@ jobs:
           scripts/package.sh --checksums dist
           ls -l dist
           cat dist/sha256sum.txt
+      - name: Release meta
+        id: meta
+        shell: bash
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          core=${version%%+*}
+          if [[ $core == *-* ]]; then
+            echo "prerelease=true" >>"$GITHUB_OUTPUT"
+            echo "make_latest=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >>"$GITHUB_OUTPUT"
+            echo "make_latest=true" >>"$GITHUB_OUTPUT"
+          fi
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.meta.outputs.make_latest == 'true' }}
 
   image:
     name: Image ${{ matrix.target }} ${{ matrix.arch }}
@@ -280,7 +307,15 @@ jobs:
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >>"$GITHUB_OUTPUT"
           version=${GITHUB_REF_NAME#v}
           [ "$PUBLISH" = true ] || version=0.0.0-dev.${GITHUB_SHA::7}
+          # OCI tags disallow '+'; keep SemVer string for labels, map for tag refs.
           echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "docker_version=${version//+/-}" >>"$GITHUB_OUTPUT"
+          core=${version%%+*}
+          if [[ $core == *-* ]]; then
+            echo "move_latest=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "move_latest=true" >>"$GITHUB_OUTPUT"
+          fi
       - name: Free disk space
         if: startsWith(matrix.target, 'cuda')
         # The CUDA images stage 2.4 (cuda) or 3.4 GB (cuda12) of libraries on top of the Rust build.
@@ -300,7 +335,7 @@ jobs:
           context: .
           target: ${{ matrix.target }}
           platforms: linux/${{ matrix.arch }}
-          build-args: OLLAYA_BUILD_VERSION=${{ steps.meta.outputs.version }}
+          build-args: OLLAYA_BUILD_VERSION=${{ steps.meta.outputs.docker_version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
@@ -344,15 +379,19 @@ jobs:
         run: |
           image=ghcr.io/${GITHUB_REPOSITORY,,}
           version=${GITHUB_REF_NAME#v}
+          # OCI tags disallow '+'; map SemVer build-metadata separator.
+          docker_version=${version//+/-}
+          core=${version%%+*}
           # The digest artifacts hold one empty file per image, named after its sha256.
           refs() { local f; for f in "$@"; do echo "$image@sha256:${f##*/}"; done; }
           mapfile -t cpu_refs < <(refs digests/digests-cpu-*/*)
           mapfile -t cuda_refs < <(refs digests/digests-cuda-*/*)
           mapfile -t cuda12_refs < <(refs digests/digests-cuda12-*/*)
-          cpu_tags=(-t "$image:$version")
-          cuda_tags=(-t "$image:$version-cuda")
-          cuda12_tags=(-t "$image:$version-cuda12")
-          if [[ $version != *-* ]]; then
+          cpu_tags=(-t "$image:$docker_version")
+          cuda_tags=(-t "$image:$docker_version-cuda")
+          cuda12_tags=(-t "$image:$docker_version-cuda12")
+          # Prerelease = hyphen in SemVer core only (not build metadata like +afm-d.1.0.0).
+          if [[ $core != *-* ]]; then
             cpu_tags+=(-t "$image:latest")
             cuda_tags+=(-t "$image:cuda")
             cuda12_tags+=(-t "$image:cuda12")
@@ -360,6 +399,6 @@ jobs:
           docker buildx imagetools create "${cpu_tags[@]}" "${cpu_refs[@]}"
           docker buildx imagetools create "${cuda_tags[@]}" "${cuda_refs[@]}"
           docker buildx imagetools create "${cuda12_tags[@]}" "${cuda12_refs[@]}"
-          docker buildx imagetools inspect "$image:$version"
-          docker buildx imagetools inspect "$image:$version-cuda"
-          docker buildx imagetools inspect "$image:$version-cuda12"
+          docker buildx imagetools inspect "$image:$docker_version"
+          docker buildx imagetools inspect "$image:$docker_version-cuda"
+          docker buildx imagetools inspect "$image:$docker_version-cuda12"
