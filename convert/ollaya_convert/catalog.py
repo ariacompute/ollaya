@@ -15,7 +15,7 @@ LAYA_REPO = "convaiinnovations/laya"
 LAYA_COMMIT = "aa8c91ca088ec597df95a0d1c76b3063cb2ae5e8"
 
 AFM_DE_REPO = "ariacompute/afm-de"
-AFM_DE_COMMIT = "402b7184eed0c64fe94f8cc2dfb716936fe4e43d"
+AFM_DE_COMMIT = "5c570f648946de7879b7f2a2634f07e2e5b06180"
 AFM_DE_MS = "AriaCompute/afm-de"
 AFM_DD_REPO = "ariacompute/afm-dd"
 # Pin when the merged Q8_0 lands in the same Hub repo (see model/afm-d/scripts/merge_dd_gguf.sh).

@@ -3,6 +3,16 @@ import type { Backend, DecideResponse, LibraryModel, LocalModel, PullProgress, Q
 
 const library: LibraryModel[] = [
   {
+    name: 'AFM-D',
+    description:
+      'AriaCompute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.',
+    caps: ['decision', 'encoder', 'decoder'],
+    tags: [
+      { name: 'afm-de:latest', summary: 'AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest.' },
+      { name: 'afm-dd:latest', summary: 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.' },
+    ],
+  },
+  {
     name: 'laya',
     description:
       'Open decision models from Convai Innovations. Typed, calibrated answers to choice, score and yes/no questions in a single forward pass, in English and 100+ languages.',
