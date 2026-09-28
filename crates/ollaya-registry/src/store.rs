@@ -152,7 +152,7 @@ impl Store {
                             continue;
                         }
                         let name = ModelName {
-                            host: file_name(&host).replace('_', ":"),
+                            host: ModelName::host_from_dir(&file_name(&host)),
                             namespace: file_name(&ns),
                             model: file_name(&model),
                             tag: file_name(&tag),

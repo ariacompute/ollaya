@@ -347,6 +347,43 @@ class Cygnet:
         return n, False, rows
 
 
+class AfmDd:
+    """afm-dd-latest: SemIf direct like jevk5, with MiniCPM5 BOS; cold plan."""
+
+    def __init__(self, srv, a):
+        from ..afm_dd import ref
+        self.ref = ref
+        self.srv = srv
+        self.n_ctx = a.n_ctx
+        labels = []
+        for s in ref.LETTERS:
+            ids = srv.tokenize(s, add_special=False, parse_special=False)
+            if len(ids) != 1 or srv.pieces(ids)[0] != s:
+                raise SystemExit("label %r is not one token in this GGUF: %s" % (s, ids))
+            labels.append(ids[0])
+        self.labels = labels
+        self.decision = {
+            "family": ref.FAMILY, "layout": ref.LAYOUT,
+            "labels": {"strings": list(ref.LETTERS), "ids": labels},
+            "add_bos": True,
+            "upstream": ref.UPSTREAM,
+            "hubs": {"huggingface": ref.HF_REPO, "modelscope": ref.MS_REPO},
+        }
+        self.plan = "cold"
+
+    def encode(self, state, questions):
+        compiled = self.ref.compile_request(state, questions)
+        n = len(self.srv.tokenize(self.ref.render_state(state), add_special=False, parse_special=False))
+        rows = []
+        for qid, _, keys, user, wire in compiled:
+            ids = self.ref.token_ids(self.srv, user, add_bos=True)
+            if len(ids) >= self.n_ctx:
+                raise self.ref.AfmDdError("question %r: the prompt is %d tokens, the context holds %d"
+                                          % (qid, len(ids), self.n_ctx))
+            rows.append((qid, ids, 0, self.labels[:len(keys)], wire))
+        return n, False, rows
+
+
 def winnow_error_class(state, questions, labels, template):
     """The runtime's error class for a request compile() rejects: the first failing question decides.
     More options than the label table holds is 422 TOO_MANY_OPTIONS in Ollaya, anything else 400."""
@@ -374,6 +411,9 @@ def error_class(layout, lay, state, questions, e):
     if layout == "jebadiah":
         from ..jebadiah.ref import TooManyOptions as JebTooMany
         return "too_many_options" if isinstance(e, JebTooMany) else "invalid"
+    if layout == "afm-dd":
+        from ..afm_dd.ref import TooManyOptions
+        return "too_many_options" if isinstance(e, TooManyOptions) else "invalid"
     return "too_many_options" if "exceed this model's" in str(e) else "invalid"
 
 
@@ -396,7 +436,7 @@ def main():
     from . import cases
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("layout", choices=["llm-logits", "winnow", "jevk5", "jebadiah", "cygnet"])
+    ap.add_argument("layout", choices=["llm-logits", "winnow", "jevk5", "jebadiah", "cygnet", "afm-dd"])
     ap.add_argument("--server", required=True, help="the pinned llama-server build the runtime ships")
     ap.add_argument("--gguf", required=True)
     ap.add_argument("--slug", required=True)
@@ -428,7 +468,7 @@ def main():
                             log=os.path.join(out, "llama-server-%s.log" % device_class(a.device)), timeout=1800)
     try:
         props = srv.props()
-        lay = {"llm-logits": LlmLogits, "winnow": Winnow, "jevk5": JevK5, "jebadiah": Jebadiah, "cygnet": Cygnet}[a.layout](srv, a)
+        lay = {"llm-logits": LlmLogits, "winnow": Winnow, "jevk5": JevK5, "jebadiah": Jebadiah, "cygnet": Cygnet, "afm-dd": AfmDd}[a.layout](srv, a)
         sha = sha256_file(a.gguf)
         decision = {"engine": "llama", **lay.decision}
         decision["gguf"] = {

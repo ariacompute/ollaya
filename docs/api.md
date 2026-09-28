@@ -1641,6 +1641,7 @@ These are the variables that change API behaviour.
 | `OLLAYA_MAX_LOADED_MODELS` | `3` | Loaded-model limit |
 | `OLLAYA_DEVICE` | `auto` | Runner device: `auto` (MLX on the Apple GPU for models with an arch layer in builds with the `mlx` feature, else CUDA if available, else CPU; on Windows, GGUF models without CUDA also use a discrete Vulkan GPU), `cpu`, `cuda`, `cuda:<n>`, `vulkan`, `vulkan:<n>` (GGUF only), `metal` |
 | `OLLAYA_THREADS` | unset | CPU threads for each loaded model: ONNX Runtime's intra-op threads, or llama.cpp's threads for GGUF models. Unset keeps each engine's default: ONNX Runtime's own, and for GGUF models half the CPUs available to the server on x86-64 (about one per physical core), all of them on arm64 |
+| `OLLAYA_HUB` | `auto` | Preferred public hub for foreign weight layers that list both Hugging Face and ModelScope URLs (`afm-de`, `afm-dd`): `huggingface`, `modelscope`, or `auto` (ModelScope when `LANG`/`LC_*` looks Chinese) |
 | `OLLAYA_MAX_QUEUE` | `512` | Queue bound before `503 QUEUE_FULL` |
 | `OLLAYA_LOAD_TIMEOUT` | `5m` | Load deadline before `500 MODEL_LOAD_FAILED` |
 | `OLLAYA_MODELS` | `~/.ollaya/models` | Model store |

@@ -14,6 +14,15 @@ LICENSE_APACHE = open(os.path.join(os.path.dirname(__file__), "..", "..", "LICEN
 LAYA_REPO = "convaiinnovations/laya"
 LAYA_COMMIT = "aa8c91ca088ec597df95a0d1c76b3063cb2ae5e8"
 
+AFM_DE_REPO = "ariacompute/afm-de"
+AFM_DE_COMMIT = "5c570f648946de7879b7f2a2634f07e2e5b06180"
+AFM_DE_MS = "AriaCompute/afm-de"
+AFM_DD_REPO = "ariacompute/afm-dd"
+# Pin when the merged Q8_0 lands in the same Hub repo (see model/afm-d/scripts/merge_dd_gguf.sh).
+AFM_DD_COMMIT = os.environ.get("AFM_DD_COMMIT", "main")
+AFM_DD_MS = "AriaCompute/afm-dd"
+AFM_DD_GGUF = os.environ.get("AFM_DD_GGUF", "gguf/afm-dd-2b-Q8_0.gguf")
+
 
 def _laya(sub, description, params, ctx, languages, mlx=False):
     """`mlx`: publish an arch layer (the tag passed its parity gate on Metal)."""
@@ -128,6 +137,45 @@ def _kev_license(repo, base):
             "LoRA adapter and pointer head: Apache-2.0, per the model card.\n"
             "Base model: %s by the Qwen team (https://huggingface.co/Qwen/%s), Apache-2.0.\n"
             "Licensed under the Apache License, Version 2.0.\n\n" % (repo, base, base)) + LICENSE_APACHE
+
+
+def _afm_de():
+    """AFM-D Encoder: Laya-layout ONNX, dual Hub (HF + ModelScope)."""
+    return {
+        "repo": AFM_DE_REPO,
+        "commit": AFM_DE_COMMIT,
+        "modelscope_repo": AFM_DE_MS,
+        "modelscope_revision": "master",
+        "weights": "model.safetensors",
+        "tokenizer": "tokenizer/tokenizer.json",
+        "checkpoint": os.environ.get(
+            "AFM_DE_CHECKPOINT",
+            os.path.join(os.path.expanduser("~"), "models", "afm-de", "model.safetensors"),
+        ),
+        "prefix": "model.",
+        "exports": {
+            "fp32": os.path.join(OUT, "afm-de"),
+            "fp16": os.path.join(OUT, "afm-de-fp16"),
+        },
+        "parameter_size": "421M",
+        "context_length": 1024,
+        "languages": ["en"],
+        "description": "AFM-D Encoder (ModernBERT-large DecisionModel): typed Choice/Score/Noul with "
+                       "tail truncation, 96-token options, and high-K shortlist.",
+    }
+
+
+def _afm_dd():
+    """AFM-D Decoder: merged MiniCPM5 Q8_0 GGUF in ariacompute/afm-dd (+ ModelScope)."""
+    tag = _gguf(
+        "afm-dd-2b-q8_0", AFM_DD_REPO, AFM_DD_COMMIT, AFM_DD_GGUF,
+        "AFM-D Decoder (MiniCPM5-2B + SemIf LoRA), Q8_0 GGUF: option-letter logits A–P after a "
+        "SemIf direct prompt (up to 16 options).",
+        "2B", ["en"],
+    )
+    tag["modelscope_repo"] = AFM_DD_MS
+    tag["modelscope_revision"] = "master"
+    return tag
 
 
 LICENSE_MIT_NLI = ("DeBERTa-v3-large zero-shot v2.0 by Moritz Laurer "
@@ -677,5 +725,38 @@ CATALOG = {
                   "581 questions from 122 requests for each of small, base and agent, on CPU and CUDA (RTX 4090 and "
                   "RTX 5090): identical token rows and truncation, the same 18 rejected requests, the same decision "
                   "on every question, scores within 2.0e-5 and probabilities within 5.5e-6.",
+    },
+    "afm-de": {
+        "namespace": "library",
+        "model": "afm-de",
+        "family": "afm-de",
+        "author": "AriaCompute",
+        "license": "MIT",
+        "license_text": "AFM-D Encoder by AriaCompute (https://huggingface.co/ariacompute/afm-de, "
+                        "https://www.modelscope.cn/models/AriaCompute/afm-de)\n"
+                        "A fine-tune of Laya (Apache-2.0) / ModernBERT-large (Apache-2.0).\n"
+                        "Licensed under the MIT License.\n",
+        "tags": {
+            "latest": _afm_de(),
+        },
+        "parity": "Packing matches afm_d.de.model.build_sequence (OPTION_DESC_MAX=96, truncate_left). "
+                  "ORT fp32 decisions match the PyTorch AFM-D Encoder at T=1.0 on the convert goldens.",
+    },
+    "afm-dd": {
+        "namespace": "library",
+        "model": "afm-dd",
+        "family": "afm-dd",
+        "author": "AriaCompute",
+        "license": "MIT",
+        "license_text": "AFM-D Decoder by AriaCompute (https://huggingface.co/ariacompute/afm-dd, "
+                        "https://www.modelscope.cn/models/AriaCompute/afm-dd)\n"
+                        "PEFT LoRA on MiniCPM5-2B (openbmb); SemIf-style direct letter readout.\n"
+                        "Licensed under the MIT License.\n",
+        "tags": {
+            "2b": _afm_dd(),
+        },
+        "aliases": {"latest": "2b"},
+        "parity": "Prompts match SemIf direct + MiniCPM BOS; runner matches pinned llama-server on the "
+                  "merged Q8_0 GGUF (cold plan).",
     },
 }

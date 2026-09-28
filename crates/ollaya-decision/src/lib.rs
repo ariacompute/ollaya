@@ -5,6 +5,7 @@
 //! llama.cpp later) only turn encoded inputs into option logits, so every model family speaks the
 //! same API through this crate.
 
+pub mod afm_dd;
 pub mod answer;
 pub mod arbiter;
 pub mod calibration;
@@ -29,12 +30,16 @@ pub mod pyrepr;
 pub mod question;
 pub mod qwen3guard;
 pub mod snap;
+pub mod shortlist;
 pub mod von;
 pub mod winnow;
 
 pub use answer::Answer;
 pub use calibration::{Calibration, CalibrationFile, TemperatureMap};
-pub use layout::{Encoded, LayaLayout, SpecialTokens, TokenEncoder, serialize_state};
+pub use layout::{
+    AFM_DE_LATEST, Encoded, LAYA_MARKERS_V1, LayaLayout, SpecialTokens, StateTruncation,
+    TokenEncoder, serialize_state,
+};
 pub use question::{Criteria, QType, Question, Questions, parse_questions};
 
 #[derive(Debug, thiserror::Error)]

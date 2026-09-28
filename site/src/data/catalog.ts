@@ -52,6 +52,40 @@ export interface ModelStats {
 }
 
 const overlays: Record<string, ModelOverlay> = {
+  'AFM-D': {
+    title: 'AFM-D',
+    description:
+      'AriaCompute AFM-D: Encoder (ModernBERT-large DecisionModel) and Decoder (MiniCPM5-2B SemIf). Pull afm-de:latest or afm-dd:latest. Dual Hub via OLLAYA_HUB.',
+    publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
+    capabilities: ['decision', 'encoder', 'decoder'],
+    keywords: ['afm', 'afm-d', 'afm-de', 'afm-dd', 'decision', 'semif', 'modernbert', 'system one', 'typesafe'],
+    rank: 0,
+  },
+  'afm-de': {
+    title: 'AFM-D Encoder',
+    description:
+      'AriaCompute AFM-D Encoder: ModernBERT-large DecisionModel for typed Choice, Score and Noul. Tail truncation, 96-token options, high-K shortlist. Weights from Hugging Face or ModelScope.',
+    publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
+    capabilities: ['decision', 'encoder'],
+    keywords: ['afm', 'afm-d', 'afm-de', 'decision', 'laya', 'modernbert', 'system one', 'typesafe'],
+    rank: 3,
+    tags: {
+      latest: { summary: 'AFM-D Encoder (421M), layout afm-de-latest.' },
+    },
+  },
+  'afm-dd': {
+    title: 'AFM-D Decoder',
+    description:
+      'AriaCompute AFM-D Decoder: SemIf direct letter logits on MiniCPM5-2B (merged Q8_0 GGUF). Up to 16 options. Dual Hub (Hugging Face / ModelScope).',
+    publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
+    capabilities: ['decision', 'decoder'],
+    keywords: ['afm', 'afm-d', 'afm-dd', 'semif', 'minicpm', 'decision', 'system one', 'typesafe'],
+    rank: 4,
+    tags: {
+      latest: { summary: 'Same as afm-dd:2b.' },
+      '2b': { summary: 'Merged MiniCPM5-2B Q8_0, layout afm-dd-latest.' },
+    },
+  },
   laya: {
     stats: { tag: 'laya:en', accuracy: 0.361, latencyMs: 9.6 },
     title: 'Laya',
@@ -353,6 +387,7 @@ const planned: { key: string; label: string }[] = [
   { key: 'gliclass', label: 'GLiClass' },
   { key: 'nli', label: 'NLI zero-shot classifiers' },
   { key: 'decider', label: 'decider' },
+  { key: 'afm', label: 'AFM-D' },
 ]
 
 // ---------------------------------------------------------------------------------------------
@@ -688,23 +723,62 @@ export interface SearchIndex {
 
 /** The static search index served at /search.json (navbar typeahead). */
 export function searchIndex(): SearchIndex {
-  return {
-    models: catalog.map((m) => ({
-      name: m.name,
-      href: `/library/${m.name}`,
-      description: m.description,
-      search: haystack(m),
-      caps: m.capabilities,
-      rank: m.rank,
-      updated: m.updated,
-      tags: featuredTags(m)
-        .filter((t) => t.kind !== 'router')
-        .map((t) => ({
-          name: fullName(m, t),
-          href: `/library/${fullName(m, t)}`,
-          summary: t.summary,
-          search: normalize(`${fullName(m, t)} ${t.languages} ${t.backbone ?? ''}`),
-        })),
-    })),
+  const models = catalog.map((m) => ({
+    name: m.name,
+    href: `/library/${m.name}`,
+    description: m.description,
+    search: haystack(m),
+    caps: m.capabilities,
+    rank: m.rank,
+    updated: m.updated,
+    tags: featuredTags(m)
+      .filter((t) => t.kind !== 'router')
+      .map((t) => ({
+        name: fullName(m, t),
+        href: `/library/${fullName(m, t)}`,
+        summary: t.summary,
+        search: normalize(`${fullName(m, t)} ${t.languages} ${t.backbone ?? ''}`),
+      })),
+  }))
+  return { models: coalesceAfmD(models) }
+}
+
+/**
+ * Desktop MODELS expects one AFM-D family whose Versions are afm-de:latest and afm-dd:latest.
+ * Coalesce the two registry models (when packaged) into that shape; if neither is packaged yet,
+ * still publish a stub so the fork's search.json lists AFM-D.
+ */
+function coalesceAfmD(
+  models: SearchIndex['models'],
+): SearchIndex['models'] {
+  const de = models.find((m) => m.name === 'afm-de')
+  const dd = models.find((m) => m.name === 'afm-dd')
+  const rest = models.filter((m) => m.name !== 'afm-de' && m.name !== 'afm-dd' && m.name !== 'AFM-D')
+  const overlay = overlays['AFM-D']
+  const tags: SearchIndex['models'][0]['tags'] = []
+  const pushTag = (name: string, summary: string, href: string) => {
+    if (tags.some((t) => t.name === name)) return
+    tags.push({ name, href, summary, search: normalize(name) })
   }
+  if (de) {
+    for (const t of de.tags) pushTag(t.name, t.summary, t.href)
+  } else {
+    pushTag('afm-de:latest', 'AFM-D Encoder (421M), layout afm-de-latest.', '/library/afm-de')
+  }
+  if (dd) {
+    for (const t of dd.tags) pushTag(t.name, t.summary, t.href)
+  } else {
+    pushTag('afm-dd:latest', 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.', '/library/afm-dd')
+  }
+  const afm: SearchIndex['models'][0] = {
+    name: 'AFM-D',
+    href: de ? '/library/afm-de' : dd ? '/library/afm-dd' : '/library/afm-de',
+    description: overlay?.description ?? 'AriaCompute AFM-D Encoder and Decoder.',
+    search: normalize(`AFM-D afm-de afm-dd ${(overlay?.keywords ?? []).join(' ')}`),
+    caps: overlay?.capabilities ?? ['decision'],
+    rank: overlay?.rank ?? 0,
+    updated: de?.updated ?? dd?.updated ?? null,
+    tags,
+  }
+  return [afm, ...rest]
 }

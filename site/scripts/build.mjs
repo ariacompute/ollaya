@@ -153,8 +153,17 @@ if (await stat(registry).catch(() => null)) {
     }
   }
   if (await stat(join(dist, 'v2')).catch(() => null)) await collect(join(dist, 'v2'))
-  // Every blob a manifest points at on this origin must be in the build, byte for byte: a deploy
-  // from a checkout without ../registry/blobs (gitignored) would otherwise break every pull.
+  // Every blob a manifest points at on an allowed origin must be in the build, byte for byte: a
+  // deploy from a checkout without ../registry/blobs (gitignored) would otherwise break every pull.
+  // AriaCompute's fork packages AFM-D blobs onto the GitHub raw registry tree (DEFAULT_REGISTRY),
+  // which differs from SITE_ORIGIN (ollaya.dev pages).
+  const blobOrigins = [
+    origin,
+    'https://raw.githubusercontent.com/ariacompute/ollaya/main/registry',
+    ...(process.env.OLLAYA_BLOB_ORIGIN
+      ? [process.env.OLLAYA_BLOB_ORIGIN.trim().replace(/\/$/, '')]
+      : []),
+  ]
   const missing = new Set()
   const checked = new Set()
   for (const m of manifestDirs) {
@@ -162,10 +171,13 @@ if (await stat(registry).catch(() => null)) {
     for (const layer of [manifest.config, ...manifest.layers]) {
       for (const url of layer.urls ?? []) {
         if (!url.includes('/blobs/sha256-')) continue
-        if (!url.startsWith(`${origin}/blobs/`)) {
-          throw new Error(`${relative(dist, m)}: blob URL ${url} is not under ${origin}; rerun package.py with SITE_ORIGIN=${origin}`)
+        const base = blobOrigins.find((o) => url.startsWith(`${o}/blobs/`))
+        if (!base) {
+          throw new Error(
+            `${relative(dist, m)}: blob URL ${url} is not under ${blobOrigins.join(' | ')}; rerun package.py with SITE_ORIGIN=${origin}`,
+          )
         }
-        const name = url.slice(`${origin}/blobs/`.length)
+        const name = url.slice(`${base}/blobs/`.length)
         if (checked.has(name)) continue
         checked.add(name)
         const body = await readFile(join(dist, 'blobs', name)).catch(() => null)

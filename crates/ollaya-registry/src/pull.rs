@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 use crate::Error;
+use crate::hub::{self, preferred_hub};
 use crate::manifest::{Descriptor, Manifest, ModelConfig, media};
 use crate::name::ModelName;
 use crate::store::{Store, digest_hex, sha256_hex};
@@ -187,18 +188,31 @@ impl Puller {
         Ok(manifest)
     }
 
-    /// The URL a descriptor's first layer comes from, rewritten to the Hugging Face mirror when
-    /// `OLLAYA_HF_ENDPOINT`/`HF_ENDPOINT` is set. Returns the URL, whether it is a Hugging Face
-    /// repository download, and whether it was rewritten to a mirror.
-    fn blob_source(&self, name: &ModelName, d: &Descriptor) -> (String, bool, bool) {
-        let url = d
-            .urls
-            .first()
-            .cloned()
-            .unwrap_or_else(|| name.blob_url(&d.digest));
-        let is_hf = url.starts_with("https://huggingface.co/");
-        let (url, rewritten) = rewrite_hf(url, self.hf_endpoint.as_deref());
-        (url, is_hf, rewritten)
+    /// Weight URLs for the preferred hub, or the registry blob URL when `urls` is empty, plus any
+    /// remaining urls (registry mirrors, etc.). The Hugging Face endpoint override
+    /// (`OLLAYA_HF_ENDPOINT`/`HF_ENDPOINT`) rewrites `huggingface.co` to a mirror, and the bearer
+    /// token is chosen per URL in `download`.
+    fn blob_sources(&self, name: &ModelName, d: &Descriptor) -> Vec<String> {
+        if d.urls.is_empty() {
+            return vec![name.blob_url(&d.digest)];
+        }
+        let hub = preferred_hub();
+        let mut out = Vec::with_capacity(2);
+        if let Some(u) = hub::select_url(&d.urls, hub) {
+            out.push(u.to_owned());
+        }
+        if let Some(u) =
+            hub::fallback_url(&d.urls, hub, out.first().map(|s| s.as_str()).unwrap_or(""))
+        {
+            out.push(u.to_owned());
+        }
+        // Any remaining urls (registry mirrors, etc.) after the hub pair.
+        for u in &d.urls {
+            if !out.iter().any(|x| x == u) {
+                out.push(u.clone());
+            }
+        }
+        out
     }
 
     async fn download(
@@ -207,17 +221,7 @@ impl Puller {
         d: &Descriptor,
         progress: &(dyn Fn(Progress) + Send + Sync),
     ) -> Result<(), Error> {
-        let (url, is_hf, mirrored) = self.blob_source(name, d);
-        // A token travels only on Hugging Face downloads: `OLLAYA_HF_TOKEN` anywhere Hugging Face
-        // serves (a mirror included), the `HF_TOKEN` fallback only on huggingface.co itself, so a
-        // token shared with Python tooling is never sent to a third-party mirror. Never on the
-        // registry (`ollaya.dev`) or a self-hosted blob host.
-        let bearer = hf_bearer(
-            is_hf,
-            mirrored,
-            self.hf_token.as_deref(),
-            self.hf_token_env.as_deref(),
-        );
+        let sources = self.blob_sources(name, d);
         let final_path = self.store.blob_path(&d.digest)?;
         let partial = PathBuf::from(format!("{}-partial", final_path.display()));
         let state_path = PathBuf::from(format!("{}-partial.json", final_path.display()));
@@ -231,32 +235,65 @@ impl Puller {
         };
         report(0);
 
-        let parts = if d.size <= SINGLE_STREAM_MAX {
-            self.fetch_whole(&url, &partial, d.size, bearer, &report)
-                .await?;
-            None
-        } else {
-            Some(
+        let mut last_err = None;
+        for (i, raw_url) in sources.iter().enumerate() {
+            if i > 0 {
+                let _ = tokio::fs::remove_file(&partial).await;
+                let _ = tokio::fs::remove_file(&state_path).await;
+                progress(Progress::status(format!(
+                    "retrying {} via {}",
+                    short(&d.digest),
+                    hub_label(raw_url)
+                )));
+            }
+            // A token travels only on Hugging Face downloads: `OLLAYA_HF_TOKEN` anywhere Hugging
+            // Face serves (a mirror included), the `HF_TOKEN` fallback only on huggingface.co
+            // itself, so a token shared with Python tooling is never sent to a third-party mirror.
+            let (url, is_hf, mirrored) = {
+                let (u, rewritten) = rewrite_hf(raw_url.clone(), self.hf_endpoint.as_deref());
+                (u, u.starts_with("https://huggingface.co/"), rewritten)
+            };
+            let bearer = hf_bearer(
+                is_hf,
+                mirrored,
+                self.hf_token.as_deref(),
+                self.hf_token_env.as_deref(),
+            );
+            let result = if d.size <= SINGLE_STREAM_MAX {
+                self.fetch_whole(&url, &partial, d.size, bearer, &report)
+                    .await
+                    .map(|_| None)
+            } else {
                 self.fetch_ranges(&url, &partial, &state_path, d.size, bearer, &report)
-                    .await?,
-            )
-        };
-
-        let got = hash_file(&partial).await?;
-        if got != digest_hex(&d.digest)? {
-            let _ = tokio::fs::remove_file(&partial).await;
-            let _ = tokio::fs::remove_file(&state_path).await;
-            return Err(Error::DigestMismatch {
-                expected: d.digest.clone(),
-                got: format!("sha256:{got}"),
-            });
+                    .await
+                    .map(Some)
+            };
+            match result {
+                Ok(parts) => {
+                    let got = hash_file(&partial).await?;
+                    if got != digest_hex(&d.digest)? {
+                        let _ = tokio::fs::remove_file(&partial).await;
+                        let _ = tokio::fs::remove_file(&state_path).await;
+                        last_err = Some(Error::DigestMismatch {
+                            expected: d.digest.clone(),
+                            got: format!("sha256:{got}"),
+                        });
+                        continue;
+                    }
+                    tokio::fs::rename(&partial, &final_path).await?;
+                    if parts.is_some() {
+                        let _ = tokio::fs::remove_file(&state_path).await;
+                    }
+                    report(d.size);
+                    return Ok(());
+                }
+                Err(e) if e.is_retryable() || i + 1 < sources.len() => {
+                    last_err = Some(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
-        tokio::fs::rename(&partial, &final_path).await?;
-        if parts.is_some() {
-            let _ = tokio::fs::remove_file(&state_path).await;
-        }
-        report(d.size);
-        Ok(())
+        Err(last_err.unwrap_or_else(|| Error::Corrupt(format!("no download URL for {}", d.digest))))
     }
 
     async fn fetch_whole(
@@ -480,6 +517,16 @@ async fn fetch_part(
 
 fn backoff(attempt: u32) -> Duration {
     Duration::from_millis(500 * 2u64.pow(attempt.min(6)))
+}
+
+fn hub_label(url: &str) -> &'static str {
+    if url.contains("modelscope.") {
+        "modelscope"
+    } else if url.contains("huggingface.co") || url.contains("hf-mirror.com") {
+        "huggingface"
+    } else {
+        "mirror"
+    }
 }
 
 async fn hash_file(path: &Path) -> Result<String, Error> {

@@ -107,10 +107,13 @@ numbers: [ollaya.dev/search](https://ollaya.dev/search).
 | `snap` | logitlab's snap1-2b: MiniCPM5-2B fine-tuned on the prompt of emnlmn's snap engine, run from the author's Q8_0 GGUF on llama.cpp with snap's own prompt: 0.648 on typed-decisions, up to 26 options, 68 ms for five questions on an RTX 4090 |
 | `decima`, `decima:agent`, `decima:small` | A. M. Madani's Decima: multilingual encoders with a late-interaction scorer that reads every option against the state. `decima:base` (mmBERT-base, 321M) scores 0.495 on typed-decisions in 15 ms for five questions on an RTX 4090; `decima:agent` is fine-tuned for coding-agent decisions; `decima:small` (122M) takes 146 ms on a CPU |
 | `arbiter` | Codekins' Arbiter v3.3 (Zyot Lab): a LoRA and a fixed 24-slot head on Gemma 3 4B IT, one forward pass per question. It answers noul, choices of up to 16 options and scores of exactly 6 levels |
+| `afm-de` | AriaCompute AFM-D Encoder (ModernBERT DecisionModel): tail truncation, 96-token options, high-K shortlist; weights from Hugging Face or ModelScope |
+| `afm-dd` | AriaCompute AFM-D Decoder (MiniCPM5-2B SemIf): letter logits A–P on llama.cpp; dual Hub |
 
 Browse them at [ollaya.dev/search](https://ollaya.dev/search). Laya tags ending in
 `-fp32` or `-fp16` pin the precision. The derived files of every model are also published at
-[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev).
+[huggingface.co/ollaya-dev](https://huggingface.co/ollaya-dev). AFM-D weight layers list both
+Hugging Face and ModelScope URLs; set `OLLAYA_HUB=huggingface|modelscope|auto` to choose.
 
 Ollama 0.35 also serves decision models: Nimble and Tev1, through the same TypeSafe wire format.
 [The FAQ](https://ollaya.dev/docs/faq#ollama-runs-decision-models-now-how-is-ollaya-different)
@@ -157,7 +160,7 @@ speed on every machine, and parity with the authors' own code on each device.
   (`:cuda12` for host drivers older than R580), or `ghcr.io/ollaya-dev/ollaya` for CPU only.
 
 Configuration is through environment variables: `OLLAYA_HOST`, `OLLAYA_MODELS`,
-`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY` and others, listed in
+`OLLAYA_KEEP_ALIVE`, `OLLAYA_DEVICE`, `OLLAYA_API_KEY`, `OLLAYA_HUB` and others, listed in
 [docs/api.md §15](docs/api.md).
 
 ## Repository

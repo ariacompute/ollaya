@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+  "config": {
+    "mediaType": "application/vnd.ollaya.config.v1+json",
+    "digest": "sha256:361b0670a737fe2e42aef07fb3bf8da3474f53dc550fa9d053785f2f800d9eb6",
+    "size": 465,
+    "urls": [
+      "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-361b0670a737fe2e42aef07fb3bf8da3474f53dc550fa9d053785f2f800d9eb6"
+    ]
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.ollaya.graph.onnx",
+      "digest": "sha256:6da0e0ce038be5ef44f1062499265651a95fe764063b4808add293361cf684d7",
+      "size": 7362814,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-6da0e0ce038be5ef44f1062499265651a95fe764063b4808add293361cf684d7"
+      ],
+      "annotations": {
+        "org.ollaya.precision": "fp32"
+      }
+    },
+    {
+      "mediaType": "application/vnd.ollaya.graph.onnx",
+      "digest": "sha256:be044b1c5bb161c5918a30bb01463bf391b5548c6eac13d53d452889c6516966",
+      "size": 7234556,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-be044b1c5bb161c5918a30bb01463bf391b5548c6eac13d53d452889c6516966"
+      ],
+      "annotations": {
+        "org.ollaya.precision": "fp16"
+      }
+    },
+    {
+      "mediaType": "application/vnd.ollaya.weights",
+      "digest": "sha256:24c547bb5497396ff235070e7370e0dd254362393efbbab0f5d29f3e60afda06",
+      "size": 842609220,
+      "urls": [
+        "https://huggingface.co/ariacompute/afm-de/resolve/5c570f648946de7879b7f2a2634f07e2e5b06180/model.safetensors",
+        "https://www.modelscope.cn/models/AriaCompute/afm-de/resolve/master/model.safetensors"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.tokenizer",
+      "digest": "sha256:6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30",
+      "size": 3583228,
+      "urls": [
+        "https://huggingface.co/ariacompute/afm-de/resolve/5c570f648946de7879b7f2a2634f07e2e5b06180/tokenizer/tokenizer.json",
+        "https://www.modelscope.cn/models/AriaCompute/afm-de/resolve/master/tokenizer/tokenizer.json"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.decision",
+      "digest": "sha256:158742913c3443b265957ed0a3cfb13d2cfee444c50788be4c799229b4666122",
+      "size": 686,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-158742913c3443b265957ed0a3cfb13d2cfee444c50788be4c799229b4666122"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.calibration",
+      "digest": "sha256:1481b70f5bce0f79aa12249a318497e71fdbd174c1913aad2cce7947e43b7769",
+      "size": 284,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-1481b70f5bce0f79aa12249a318497e71fdbd174c1913aad2cce7947e43b7769"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.license",
+      "digest": "sha256:14315e0c7d6d728ffd44b02693547266655cd31ce056d5fc4718b79ce43a9966",
+      "size": 224,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-14315e0c7d6d728ffd44b02693547266655cd31ce056d5fc4718b79ce43a9966"
+      ]
+    },
+    {
+      "mediaType": "application/vnd.ollaya.params",
+      "digest": "sha256:dd15c90375b8cdeb69eaba2ff5fe51009184c3b2799ea0edde6fa92ec9a7d531",
+      "size": 21,
+      "urls": [
+        "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/blobs/sha256-dd15c90375b8cdeb69eaba2ff5fe51009184c3b2799ea0edde6fa92ec9a7d531"
+      ]
+    }
+  ]
+}

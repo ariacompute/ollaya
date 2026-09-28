@@ -31,6 +31,68 @@ const LIBRARY_URL: &str = "https://ollaya.dev/search.json";
 /// Where a newer release is downloaded (the page picks the right installer for this system).
 const DOWNLOAD_URL: &str = "https://ollaya.dev/download";
 
+/// AriaCompute AFM-D: one sidebar family with Encoder + Decoder pull tags. The upstream
+/// `search.json` does not list these yet; the fork injects (or coalesces) them so the desktop
+/// MODELS list always shows AFM-D with `afm-de:latest` and `afm-dd:latest`.
+fn afm_d_library_entry(extra_tags: &[Value]) -> Value {
+    let mut tags = vec![
+        serde_json::json!({
+            "name": "afm-de:latest",
+            "summary": "AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest."
+        }),
+        serde_json::json!({
+            "name": "afm-dd:latest",
+            "summary": "AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest."
+        }),
+    ];
+    for t in extra_tags {
+        let name = t.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty() || tags.iter().any(|x| x.get("name") == t.get("name")) {
+            continue;
+        }
+        // Keep non-latest / alias tags from a packaged registry (e.g. afm-dd:2b).
+        if name.starts_with("afm-de:") || name.starts_with("afm-dd:") {
+            tags.push(t.clone());
+        }
+    }
+    serde_json::json!({
+        "name": "AFM-D",
+        "description": "AriaCompute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.",
+        "caps": ["decision", "encoder", "decoder"],
+        "tags": tags,
+    })
+}
+
+/// Drop separate `afm-de` / `afm-dd` rows and ensure a single `AFM-D` entry is first.
+fn with_afm_d(models: Value) -> Value {
+    let list = match models.as_array() {
+        Some(a) => a.clone(),
+        None => Vec::new(),
+    };
+    let mut extras = Vec::new();
+    let mut rest = Vec::new();
+    for m in list {
+        let name = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let lower = name.to_ascii_lowercase();
+        if lower == "afm-de" || lower == "afm-dd" {
+            if let Some(tags) = m.get("tags").and_then(|t| t.as_array()) {
+                extras.extend(tags.iter().cloned());
+            }
+            continue;
+        }
+        if lower == "afm-d" || name == "AFM-D" {
+            if let Some(tags) = m.get("tags").and_then(|t| t.as_array()) {
+                extras.extend(tags.iter().cloned());
+            }
+            continue;
+        }
+        rest.push(m);
+    }
+    let mut out = vec![afm_d_library_entry(&extras)];
+    out.append(&mut rest);
+    Value::Array(out)
+}
+
 #[derive(Default)]
 struct AppState {
     /// This app started the server, so it stops it when it quits.
@@ -383,6 +445,13 @@ async fn start_server_now(app: &AppHandle) -> Result<Status, String> {
     cmd.arg("serve")
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
+    // Prefer this fork's GitHub-hosted registry (AFM-D manifests) when the user has not set one.
+    if std::env::var_os("OLLAYA_REGISTRY").is_none() {
+        cmd.env(
+            "OLLAYA_REGISTRY",
+            "raw.githubusercontent.com/ariacompute/ollaya/main/registry",
+        );
+    }
     // GGUF models run on the llama.cpp build bundled in the app's resources (desktop.yml stages
     // it there); the bundled `ollaya serve` finds it through OLLAYA_LIBRARY_PATH. A command-line
     // install uses its own, next to its GPU pack.
@@ -453,7 +522,7 @@ async fn library_now() -> Result<Value, String> {
         .and_then(|r| r.error_for_status())
         .map_err(|e| format!("could not load the model library: {e}"))?;
     let index: Value = body.json().await.map_err(|e| e.to_string())?;
-    Ok(index["models"].clone())
+    Ok(with_afm_d(index["models"].clone()))
 }
 
 #[tauri::command]
