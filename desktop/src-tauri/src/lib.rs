@@ -209,6 +209,13 @@ async fn start_server_now(app: &AppHandle) -> Result<Status, String> {
     cmd.arg("serve")
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
+    // Prefer this fork's GitHub-hosted registry (AFM-D manifests) when the user has not set one.
+    if std::env::var_os("OLLAYA_REGISTRY").is_none() {
+        cmd.env(
+            "OLLAYA_REGISTRY",
+            "raw.githubusercontent.com/ariacompute/ollaya/main/registry",
+        );
+    }
     // GGUF models run on the llama.cpp build bundled in the app's resources (desktop.yml stages
     // it there); `ollaya serve` finds it through OLLAYA_LIBRARY_PATH.
     if std::env::var_os("OLLAYA_LIBRARY_PATH").is_none()

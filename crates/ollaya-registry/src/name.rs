@@ -10,10 +10,15 @@ use crate::Error;
 pub const DEFAULT_NAMESPACE: &str = "library";
 pub const DEFAULT_TAG: &str = "latest";
 /// The registry that serves the public model library. Overridable with `OLLAYA_REGISTRY`.
-pub const DEFAULT_REGISTRY: &str = "ollaya.dev";
+///
+/// AriaCompute's fork serves manifests from this repo's committed `registry/` tree (so AFM-D
+/// can ship without publishing to upstream ollaya.dev). Derived/weight layer `urls` in those
+/// manifests still point at their absolute hosts (ollaya.dev blobs, Hugging Face, ModelScope).
+pub const DEFAULT_REGISTRY: &str =
+    "raw.githubusercontent.com/ariacompute/ollaya/main/registry";
 /// Hosts that served the public library before [`DEFAULT_REGISTRY`]. They still serve it, and
 /// models pulled from them are moved under the current host (see `Store::migrate_host`).
-pub const LEGACY_REGISTRIES: &[&str] = &["ollaya.cobanov.dev"];
+pub const LEGACY_REGISTRIES: &[&str] = &["ollaya.dev", "ollaya.cobanov.dev"];
 
 /// Whether `OLLAYA_REGISTRY` leaves the default registry in place.
 pub fn is_default_registry() -> bool {
@@ -173,6 +178,13 @@ mod tests {
         assert_eq!(
             (n.namespace.as_str(), n.model.as_str(), n.tag.as_str()),
             ("library", "laya", "latest")
+        );
+        assert_eq!(n.host, DEFAULT_REGISTRY);
+        assert_eq!(
+            n.manifest_url(),
+            format!(
+                "https://{DEFAULT_REGISTRY}/v2/library/laya/manifests/latest"
+            )
         );
         assert_eq!(n.to_string(), "laya:latest");
         assert_eq!(ModelName::parse("Laya:EN").unwrap().to_string(), "laya:en");
