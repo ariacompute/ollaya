@@ -14,8 +14,7 @@ pub const DEFAULT_TAG: &str = "latest";
 /// AriaCompute's fork serves manifests from this repo's committed `registry/` tree (so AFM-D
 /// can ship without publishing to upstream ollaya.dev). Derived/weight layer `urls` in those
 /// manifests still point at their absolute hosts (ollaya.dev blobs, Hugging Face, ModelScope).
-pub const DEFAULT_REGISTRY: &str =
-    "raw.githubusercontent.com/ariacompute/ollaya/main/registry";
+pub const DEFAULT_REGISTRY: &str = "raw.githubusercontent.com/ariacompute/ollaya/main/registry";
 /// Hosts that served the public library before [`DEFAULT_REGISTRY`]. They still serve it, and
 /// models pulled from them are moved under the current host (see `Store::migrate_host`).
 pub const LEGACY_REGISTRIES: &[&str] = &["ollaya.dev", "ollaya.cobanov.dev"];
@@ -111,11 +110,20 @@ impl ModelName {
     }
 
     /// Host without scheme, as used in the on-disk manifest path.
+    ///
+    /// Colons (ports) become `_`; path separators in a registry base (e.g. a GitHub raw
+    /// prefix) become `=` so `Store::list` still walks a single host directory level.
     pub fn host_dir(&self) -> String {
         self.host
             .split_once("://")
             .map_or(self.host.clone(), |(_, h)| h.to_owned())
             .replace(':', "_")
+            .replace('/', "=")
+    }
+
+    /// Inverse of [`Self::host_dir`] for reconstructing a host from an on-disk directory name.
+    pub fn host_from_dir(dir: &str) -> String {
+        dir.replace('=', "/").replace('_', ":")
     }
 
     /// Base URL of the registry (`https://host` unless a scheme was given).
@@ -182,9 +190,7 @@ mod tests {
         assert_eq!(n.host, DEFAULT_REGISTRY);
         assert_eq!(
             n.manifest_url(),
-            format!(
-                "https://{DEFAULT_REGISTRY}/v2/library/laya/manifests/latest"
-            )
+            format!("https://{DEFAULT_REGISTRY}/v2/library/laya/manifests/latest")
         );
         assert_eq!(n.to_string(), "laya:latest");
         assert_eq!(ModelName::parse("Laya:EN").unwrap().to_string(), "laya:en");
@@ -195,6 +201,14 @@ mod tests {
         let dev = ModelName::parse("http://localhost:8080/library/laya:en-fp32").unwrap();
         assert_eq!(dev.registry_url(), "http://localhost:8080");
         assert_eq!(dev.host_dir(), "localhost_8080");
+        assert_eq!(
+            ModelName::parse("laya").unwrap().host_dir(),
+            "raw.githubusercontent.com=ariacompute=ollaya=main=registry"
+        );
+        assert_eq!(
+            ModelName::host_from_dir("raw.githubusercontent.com=ariacompute=ollaya=main=registry"),
+            DEFAULT_REGISTRY
+        );
         assert_eq!(
             dev.manifest_url(),
             "http://localhost:8080/v2/library/laya/manifests/en-fp32"
