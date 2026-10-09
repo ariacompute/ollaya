@@ -23,13 +23,14 @@ cd ../model/afm-d && ./scripts/merge_dd_gguf.sh
 
 ## Convert
 
-`uv run` must be from `convert/` (the uv project root). `--server` is the `llama-server` binary, not the llama.cpp tree.
+`uv run` must be from `convert/` (the uv project root). `--server` is the `llama-server` binary, not the llama.cpp tree. Goldens need `out/data/typed-decisions-test.parquet` (LocalLLaMA/typed-decisions test split).
 
 ```bash
 cd convert
+uv run python -m ollaya_convert.fetch_typed_decisions
 uv run python -m ollaya_convert.families.llm_common.export_llama afm-dd \
   --server /path/to/llama-server --gguf .../afm-dd-2b-Q8_0.gguf --slug 2b-q8_0 \
   --repo ariacompute/afm-dd --revision <sha> --file gguf/afm-dd-2b-Q8_0.gguf \
-  --n-ctx 4096 --temperature 1.0
+  --n-ctx 4096 --temperature 1.0 --device cpu
 uv run python -m ollaya_convert.package afm-dd
 ```
