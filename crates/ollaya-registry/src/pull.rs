@@ -251,7 +251,8 @@ impl Puller {
             // itself, so a token shared with Python tooling is never sent to a third-party mirror.
             let (url, is_hf, mirrored) = {
                 let (u, rewritten) = rewrite_hf(raw_url.clone(), self.hf_endpoint.as_deref());
-                (u, u.starts_with("https://huggingface.co/"), rewritten)
+                let is_hf = u.starts_with("https://huggingface.co/");
+                (u, is_hf, rewritten)
             };
             let bearer = hf_bearer(
                 is_hf,
