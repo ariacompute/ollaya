@@ -92,7 +92,13 @@ def edge_cases() -> List[Case]:
 def typed_decisions(limit: int = 0) -> List[Case]:
     import pyarrow.parquet as pq
 
-    rows = pq.read_table(TYPED_DECISIONS).to_pylist()
+    path = os.path.abspath(TYPED_DECISIONS)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            "%s\nDownload once from convert/: uv run python -m ollaya_convert.fetch_typed_decisions"
+            % path
+        )
+    rows = pq.read_table(path).to_pylist()
     if limit:
         rows = rows[:limit]
     # States are JSON objects; pass them parsed so the runtime's state serialisation is exercised.

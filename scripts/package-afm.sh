@@ -30,10 +30,12 @@ if [[ "$TRACK" == "dd" || "$TRACK" == "both" ]]; then
 Decoder (afm-dd): run these from convert/ (uv project root; pyproject.toml lives there).
 
   cd ${ROOT}/convert
+  uv run python -m ollaya_convert.fetch_typed_decisions   # → out/data/typed-decisions-test.parquet
   uv run python -m ollaya_convert.families.llm_common.export_llama afm-dd \\
     --server ${SERVER} --gguf ${GGUF} --slug 2b-q8_0 \\
     --repo ariacompute/afm-dd --revision ${AFM_DD_COMMIT} --file gguf/afm-dd-2b-Q8_0.gguf \\
-    --n-ctx 4096 --temperature 1.0
+    --n-ctx 4096 --temperature 1.0 \\
+    --device cpu   # or CUDA0 when GPU + CUDA llama-server work
 
   AFM_DD_COMMIT=${AFM_DD_COMMIT} uv run python -m ollaya_convert.package afm-dd --origin ${ORIGIN}
 
