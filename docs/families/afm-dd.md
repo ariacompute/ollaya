@@ -25,7 +25,7 @@ cd ../model/afm-d && ./scripts/merge_dd_gguf.sh
 
 ```bash
 uv run python -m ollaya_convert.families.llm_common.export_llama afm-dd \
-  --server <llama-server> --gguf .../afm-dd-2b-Q8_0.gguf --slug 2b-q8_0 \
+  --server /path/to/llama-server --gguf .../afm-dd-2b-Q8_0.gguf --slug 2b-q8_0 \
   --repo ariacompute/afm-dd --revision <sha> --file gguf/afm-dd-2b-Q8_0.gguf \
   --n-ctx 4096 --temperature 1.0
 uv run python -m ollaya_convert.package afm-dd
