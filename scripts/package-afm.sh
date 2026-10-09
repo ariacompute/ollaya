@@ -27,8 +27,9 @@ if [[ "$TRACK" == "dd" || "$TRACK" == "both" ]]; then
   GGUF="${AFM_DD_GGUF:-/path/to/afm-dd-2b-Q8_0.gguf}"
   SERVER="${AFM_DD_LLAMA_SERVER:-/path/to/llama-server}"
   cat <<EOF
-Decoder (afm-dd): run export_llama against the local GGUF, then package.
+Decoder (afm-dd): run these from convert/ (uv project root; pyproject.toml lives there).
 
+  cd ${ROOT}/convert
   uv run python -m ollaya_convert.families.llm_common.export_llama afm-dd \\
     --server ${SERVER} --gguf ${GGUF} --slug 2b-q8_0 \\
     --repo ariacompute/afm-dd --revision ${AFM_DD_COMMIT} --file gguf/afm-dd-2b-Q8_0.gguf \\
@@ -37,5 +38,6 @@ Decoder (afm-dd): run export_llama against the local GGUF, then package.
   AFM_DD_COMMIT=${AFM_DD_COMMIT} uv run python -m ollaya_convert.package afm-dd --origin ${ORIGIN}
 
 Optional env: AFM_DD_GGUF, AFM_DD_LLAMA_SERVER (defaults shown as placeholders above).
+--server must be the llama-server binary, not the llama.cpp source tree.
 EOF
 fi
