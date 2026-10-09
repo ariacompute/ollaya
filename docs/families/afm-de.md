@@ -19,6 +19,8 @@ hub via `OLLAYA_HUB` (`huggingface` | `modelscope` | `auto`; `auto` prefers Mode
 ## Convert
 
 ```bash
+# from ollaya/convert (uv project root):
+cd convert
 # snapshot Hub → local, then:
 uv run python -m ollaya_convert.families.afm_de.export \
   --checkpoint /path/to/afm-de --out out/afm-de

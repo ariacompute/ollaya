@@ -23,7 +23,10 @@ cd ../model/afm-d && ./scripts/merge_dd_gguf.sh
 
 ## Convert
 
+`uv run` must be from `convert/` (the uv project root). `--server` is the `llama-server` binary, not the llama.cpp tree.
+
 ```bash
+cd convert
 uv run python -m ollaya_convert.families.llm_common.export_llama afm-dd \
   --server /path/to/llama-server --gguf .../afm-dd-2b-Q8_0.gguf --slug 2b-q8_0 \
   --repo ariacompute/afm-dd --revision <sha> --file gguf/afm-dd-2b-Q8_0.gguf \
