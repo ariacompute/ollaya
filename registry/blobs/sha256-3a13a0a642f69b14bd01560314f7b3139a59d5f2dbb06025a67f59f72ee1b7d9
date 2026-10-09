@@ -1,0 +1,70 @@
+{
+ "engine": "llama",
+ "family": "afm-dd",
+ "layout": "afm-dd-latest",
+ "labels": {
+  "strings": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E",
+   "F",
+   "G",
+   "H",
+   "I",
+   "J",
+   "K",
+   "L",
+   "M",
+   "N",
+   "O",
+   "P"
+  ],
+  "ids": [
+   54,
+   55,
+   56,
+   57,
+   58,
+   59,
+   60,
+   61,
+   62,
+   63,
+   64,
+   65,
+   66,
+   67,
+   68,
+   69
+  ]
+ },
+ "add_bos": true,
+ "upstream": {
+  "product": "AFM-D Decoder",
+  "base": "openbmb/MiniCPM5-2B",
+  "base_revision": "12a3808a956f869c767195e9266b59c4d21d92e2",
+  "prompt": "semif_phase1.direct"
+ },
+ "hubs": {
+  "huggingface": "ariacompute/afm-dd",
+  "modelscope": "AriaCompute/afm-dd"
+ },
+ "gguf": {
+  "repo": "ariacompute/afm-dd",
+  "revision": "72dd5393443afdde57dcd242385c61620378c591",
+  "path": "gguf/afm-dd-2b-Q8_0.gguf",
+  "sha256": "b6e354504c34ad9f50e58fd8c731582ea8a6dec1f2890f8143d52fd67b538850",
+  "size": 2679710432,
+  "quantization": "Q8_0",
+  "architecture": "llama",
+  "url": "https://huggingface.co/ariacompute/afm-dd/resolve/72dd5393443afdde57dcd242385c61620378c591/gguf/afm-dd-2b-Q8_0.gguf"
+ },
+ "llama": {
+  "n_ctx": 4096,
+  "swa_full": false,
+  "plan": "cold",
+  "build": "b11146"
+ }
+}
