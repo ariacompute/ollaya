@@ -29,8 +29,8 @@ pub mod pyjson;
 pub mod pyrepr;
 pub mod question;
 pub mod qwen3guard;
-pub mod snap;
 pub mod shortlist;
+pub mod snap;
 pub mod von;
 pub mod winnow;
 
