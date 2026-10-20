@@ -56,14 +56,14 @@ fn afm_d_library_entry(extra_tags: &[Value]) -> Value {
         }
     }
     serde_json::json!({
-        "name": "AFM-D",
+        "name": "afm-d",
         "description": "AriaCompute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.",
         "caps": ["decision", "encoder", "decoder"],
         "tags": tags,
     })
 }
 
-/// Drop separate `afm-de` / `afm-dd` rows and ensure a single `AFM-D` entry is first.
+/// Drop separate `afm-de` / `afm-dd` rows and ensure a single `afm-d` entry is first.
 fn with_afm_d(models: Value) -> Value {
     let list = match models.as_array() {
         Some(a) => a.clone(),

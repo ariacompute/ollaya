@@ -842,7 +842,7 @@ function coalesceAfmD(
     pushTag('afm-dd:latest', 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.', '/library/afm-dd')
   }
   const afm: SearchIndex['models'][0] = {
-    name: 'AFM-D',
+    name: 'afm-d',
     href: de ? '/library/afm-de' : dd ? '/library/afm-dd' : '/library/afm-de',
     description: overlay?.description ?? 'AriaCompute AFM-D Encoder and Decoder.',
     search: normalize(`AFM-D afm-de afm-dd ${(overlay?.keywords ?? []).join(' ')}`),
