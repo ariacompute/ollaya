@@ -317,9 +317,14 @@ mod tests {
         assert_eq!(n.to_string(), format!("laya:en@{digest}"));
         assert_eq!(
             n.manifest_url(),
-            format!("https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/v2/library/laya/manifests/{digest}")
+            format!(
+                "https://raw.githubusercontent.com/ariacompute/ollaya/main/registry/v2/library/laya/manifests/{digest}"
+            )
         );
-        assert_eq!(n.stored(), "raw.githubusercontent.com=ariacompute=ollaya=main=registry/library/laya:en");
+        assert_eq!(
+            n.stored(),
+            "raw.githubusercontent.com=ariacompute=ollaya=main=registry/library/laya:en"
+        );
         assert_eq!(n.with_tag("fr").to_string(), "laya:fr");
 
         // Without a tag: stored under `sha256-<hex>`, which names the same model.
