@@ -102,7 +102,8 @@ class ProjectorPackaging(unittest.TestCase):
                        'parameter_size': '7.5B', 'languages': ['multilingual'], 'description': 'text',
                        'mmproj': ('author/base', 'base-commit', 'gguf/mmproj.gguf')}
 
-            def upstream(media, repo, commit, path):
+            def upstream(media, repo, commit, path, ms_repo=None, ms_revision=None):
+                # Match package.upstream: optional ModelScope mirror kwargs for dual-hub layers.
                 return {'mediaType': media, 'digest': 'sha256:abc', 'size': 123,
                         'urls': [f'https://huggingface.co/{repo}/resolve/{commit}/{path}']}
 

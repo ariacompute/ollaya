@@ -120,13 +120,27 @@ impl Puller {
         self.http.as_ref().map_err(|e| Error::NoHttps(e.clone()))
     }
 
-    /// Fetch and parse a manifest without storing anything.
+    /// Fetch and parse a manifest without storing anything. A name with a digest fetches the
+    /// manifest by that digest and checks the bytes against it before anything else reads them.
     pub async fn fetch_manifest(&self, name: &ModelName) -> Result<(Manifest, Vec<u8>), Error> {
         let resp = self.http()?.get(name.manifest_url()).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(Error::NotFound(name.to_string()));
+            // The registry's 404 page (HTML on a static site) is never read as a manifest.
+            return Err(match name.digest {
+                Some(_) => Error::DigestNotFound(name.to_string()),
+                None => Error::NotFound(name.to_string()),
+            });
         }
         let bytes = resp.error_for_status()?.bytes().await?.to_vec();
+        if let Some(digest) = &name.digest {
+            let got = format!("sha256:{}", sha256_hex(&bytes));
+            if &got != digest {
+                return Err(Error::ManifestMismatch {
+                    name: name.to_string(),
+                    got,
+                });
+            }
+        }
         let manifest: Manifest = serde_json::from_slice(&bytes)
             .map_err(|e| Error::Corrupt(format!("manifest for {name}: {e}")))?;
         for d in manifest.blobs() {
@@ -492,7 +506,7 @@ async fn fetch_part(
             }
             let resp = req.send().await?.error_for_status()?;
             if resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-                return Err(Error::Corrupt(format!(
+                return Err(Error::NoRanges(format!(
                     "{url}: server ignored the range request"
                 )));
             }

@@ -424,7 +424,7 @@ mod tests {
         assert!(
             dir.path()
                 .join(format!(
-                    "manifests/ollaya.dev/library/laya/sha256-{}",
+                    "manifests/raw.githubusercontent.com=ariacompute=ollaya=main=registry/library/laya/sha256-{}",
                     &d1[7..]
                 ))
                 .is_file()

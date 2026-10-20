@@ -1322,6 +1322,7 @@ impl LlamaModel {
                             p: 0,
                             candidates: q.label_ids.iter().map(|&t| t as Token).collect(),
                             wire_order: q.wire_order,
+                            groups: None,
                         },
                     ));
                 }
