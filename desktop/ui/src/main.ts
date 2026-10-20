@@ -69,7 +69,7 @@ const state = {
  * library index doesn't always list), then the main tags. Precision variants (-fp16, -fp32) are
  * for pinning, not for picking.
  *
- * Families whose listed tags already use other pull names (AFM-D → afm-de:latest / afm-dd:latest)
+ * Families whose listed tags already use other pull names (afm-d → afm-de:latest / afm-dd:latest)
  * keep those names as-is — do not invent `<family>:latest`.
  */
 const mainTags = (m: LibraryModel) => {

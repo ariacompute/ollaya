@@ -61,7 +61,7 @@ export interface ModelStats {
 
 const overlays: Record<string, ModelOverlay> = {
   'AFM-D': {
-    title: 'AFM-D',
+    title: 'afm-d',
     description:
       'AriaCompute AFM-D: Encoder (ModernBERT-large DecisionModel) and Decoder (MiniCPM5-2B SemIf). Pull afm-de:latest or afm-dd:latest. Dual Hub via OLLAYA_HUB.',
     publisher: { name: 'AriaCompute', url: 'https://huggingface.co/ariacompute' },
@@ -452,7 +452,7 @@ const planned: { key: string; label: string }[] = [
   { key: 'gliclass', label: 'GLiClass' },
   { key: 'nli', label: 'NLI zero-shot classifiers' },
   { key: 'decider', label: 'decider' },
-  { key: 'afm', label: 'AFM-D' },
+  { key: 'afm', label: 'afm-d' },
 ]
 
 // ---------------------------------------------------------------------------------------------

@@ -14,7 +14,7 @@ const library: LibraryModel[] = [
     ],
   },
   {
-    name: 'AFM-D',
+    name: 'afm-d',
     description:
       'AriaCompute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.',
     caps: ['decision', 'encoder', 'decoder'],
