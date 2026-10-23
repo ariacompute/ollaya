@@ -3,6 +3,10 @@
 #
 #   curl -fsSL https://ollaya.dev/install.sh | sh
 #
+# Uninstall (the models stay; the script says where and how to delete them):
+#
+#   curl -fsSL https://ollaya.dev/install.sh | sh -s -- --uninstall
+#
 # Settings, passed as environment variables to the shell that runs the script
 # (curl -fsSL https://ollaya.dev/install.sh | OLLAYA_VERSION=0.1.0 sh):
 #   OLLAYA_VERSION      version to install, such as 0.1.0 (default: the latest release)
@@ -11,6 +15,7 @@
 #                       (default: /usr/local, or ~/.local without root or sudo)
 #   OLLAYA_NO_SERVICE=1 don't create or start the systemd service
 #   OLLAYA_NO_CUDA=1    don't download the CUDA libraries, even when there is an NVIDIA GPU
+#   OLLAYA_NO_ROCM=1    don't download the ROCm libraries, even when there is an AMD GPU
 #
 # The script never installs GPU drivers. Downloads are checked against the release's sha256sum.txt.
 
@@ -29,6 +34,14 @@ main() {
     error() { printf '%sERROR:%s %s\n' "$red" "$plain" "$*" >&2; exit 1; }
     available() { command -v "$1" >/dev/null 2>&1; }
     enabled() { case ${1:-} in '' | 0 | false | no) return 1 ;; *) return 0 ;; esac; }
+
+    UNINSTALL=false
+    for arg in "$@"; do
+        case $arg in
+            --uninstall) UNINSTALL=true ;;
+            *) error "unknown option: $arg (the only option is --uninstall)" ;;
+        esac
+    done
 
     REPO=${OLLAYA_REPO:-ollaya-dev/ollaya}
     PORT=11435
@@ -68,7 +81,7 @@ main() {
     esac
     [ "$WSL" != 1 ] || warn "WSL 1 is untested and has no GPU access; WSL 2 is recommended"
 
-    if [ "$OS" = Linux ]; then
+    if [ "$OS" = Linux ] && ! $UNINSTALL; then
         # pyke's ONNX Runtime build references glibc 2.38 symbols: Ubuntu 24.04, Debian 13,
         # Fedora 39, RHEL 10 or newer.
         glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }') || glibc=
@@ -86,11 +99,11 @@ main() {
     missing=
     for tool in curl tar awk mktemp; do available "$tool" || missing="$missing $tool"; done
     available sha256sum || available shasum || available openssl || missing="$missing sha256sum"
-    [ -z "$missing" ] || error "required tools are missing:$missing"
+    $UNINSTALL || [ -z "$missing" ] || error "required tools are missing:$missing"
     ZSTD=
     if available zstd; then
         ZSTD=zstd
-    elif [ "$OS" = Linux ]; then
+    elif [ "$OS" = Linux ] && ! $UNINSTALL; then
         error "zstd is needed to unpack Ollaya. Install it and re-run:
   Debian/Ubuntu: sudo apt-get install zstd
   Fedora/RHEL:   sudo dnf install zstd
@@ -133,6 +146,11 @@ main() {
     SUDO=
     IS_ROOT=false
     [ "$(id -u)" -ne 0 ] || IS_ROOT=true
+    # An install without root rights is in ~/.local; uninstall removes it without asking for sudo.
+    if $UNINSTALL && [ -z "${OLLAYA_INSTALL_DIR:-}" ] && [ ! -e /usr/local/bin/ollaya ] &&
+        [ -e "${HOME:-}/.local/bin/ollaya" ]; then
+        OLLAYA_INSTALL_DIR=$HOME/.local
+    fi
     if [ -n "${OLLAYA_INSTALL_DIR:-}" ]; then
         PREFIX=${OLLAYA_INSTALL_DIR%/}
         case $PREFIX in /*) ;; *) error "OLLAYA_INSTALL_DIR must be an absolute path" ;; esac
@@ -146,6 +164,7 @@ main() {
             if get_sudo "$PREFIX"; then
                 SUDO=sudo
             else
+                ! $UNINSTALL || error "removing Ollaya from /usr/local needs root or sudo"
                 [ -n "${HOME:-}" ] || error "cannot write to /usr/local, no sudo, and HOME is not set"
                 PREFIX=$HOME/.local
                 status "No root access: installing to $PREFIX instead"
@@ -156,6 +175,37 @@ main() {
     # Root-level changes (system user, systemd unit) are only made with root rights we have anyway.
     PRIVILEGED=false
     if $IS_ROOT || [ -n "$SUDO" ]; then PRIVILEGED=true; fi
+
+    # --- uninstall -------------------------------------------------------------------------
+
+    if $UNINSTALL; then
+        [ -e "$BINDIR/ollaya" ] || [ -d "$PREFIX/lib/ollaya" ] || error "no Ollaya install found in $PREFIX"
+        # Only the service this install created, the one that runs this binary.
+        unit=/etc/systemd/system/ollaya.service
+        if $SUDO grep -qxF "ExecStart=$BINDIR/ollaya serve" "$unit" 2>/dev/null; then
+            $PRIVILEGED || error "removing the ollaya systemd service needs root or sudo"
+            status "Removing the ollaya systemd service"
+            $SUDO systemctl disable --now ollaya >/dev/null 2>&1 || :
+            $SUDO rm -f "$unit"
+            $SUDO systemctl daemon-reload 2>/dev/null || :
+        fi
+        # A server this user's CLI started in the background.
+        [ ! -x "$BINDIR/ollaya" ] || "$BINDIR/ollaya" stop >/dev/null 2>&1 || :
+        $SUDO rm -rf "$BINDIR/ollaya" "$PREFIX/lib/ollaya" "$PREFIX/share/doc/ollaya" "$PREFIX/share/ollaya/skills"
+        # With a /usr prefix, share/ollaya is also the service's home, which holds its models.
+        $SUDO rmdir "$PREFIX/share/ollaya" 2>/dev/null || :
+        status "Removed Ollaya from $PREFIX"
+        if id ollaya >/dev/null 2>&1; then
+            status "Kept the ollaya system user and the service's models in /usr/share/ollaya. To delete them: sudo userdel -r ollaya"
+        fi
+        if [ -d /etc/systemd/system/ollaya.service.d ]; then
+            status "Kept the service settings in /etc/systemd/system/ollaya.service.d"
+        fi
+        if [ -d "${HOME:-}/.ollaya" ]; then
+            status "Kept your models, logs and history in $HOME/.ollaya. To delete them: rm -rf ~/.ollaya"
+        fi
+        exit 0
+    fi
 
     TMP=$(mktemp -d "${TMPDIR:-/tmp}/ollaya-install.XXXXXX")
     STAGE=
@@ -314,6 +364,145 @@ main() {
         *) ;;
     esac
 
+    # ROCM_STATE: none | nodriver | unsupported | missing_libs | ready
+    ROCM_STATE=none
+    ROCM_ARCH=
+    MISSING_ROCM_LIBS=
+    # Check for ROCm runtime libraries required by the pack's libggml-hip.so
+    has_rocm_lib() {
+        if available ldconfig; then
+            ldconfig -p 2>/dev/null | grep -q "/$1\$"
+            return
+        fi
+        for d in /usr/lib64 /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib; do
+            [ -f "$d/$1" ] && return 0
+        done
+        return 1
+    }
+    # Discrete AMD GPUs compiled by upstream llama.cpp. Integrated GPUs (APUs such as
+    # gfx1036 or gfx1150) share system memory and are not faster than the CPU with AVX-512,
+    # so Ollaya's auto-selection leaves them on the CPU.
+    supported_rocm_arch() {
+        case $1 in
+            gfx1201 | gfx1200 | gfx1100 | gfx1101 | gfx1102 | gfx1030 | gfx1031 | gfx1032 | gfx1034 | gfx1010 | gfx1011 | gfx1012 | gfx908 | gfx90a | gfx942 | gfx950) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+
+    if [ "$OS" = Linux ] && ! $WANT_CUDA; then
+        AMD_FOUND=false
+        if available lspci && lspci -d 1002: 2>/dev/null | grep -qiE 'vga|3d|display'; then
+            AMD_FOUND=true
+        else
+            for dev in /sys/bus/pci/devices/*; do
+                if [ -r "$dev/vendor" ] && [ "$(cat "$dev/vendor")" = 0x1002 ]; then
+                    if [ -r "$dev/class" ]; then
+                        case $(cat "$dev/class") in 0x03*) AMD_FOUND=true; break ;; esac
+                    fi
+                fi
+            done
+        fi
+
+        if $AMD_FOUND; then
+            if [ -z "$GPU_MIB" ]; then
+                bytes=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | sort -n | tail -n 1) || bytes=
+                if [ -n "$bytes" ] && [ "$bytes" -gt 0 ] 2>/dev/null; then
+                    GPU_MIB=$((bytes / 1048576))
+                fi
+            fi
+            # Verify /dev/kfd and /dev/dri for compute access
+            if [ ! -e /dev/kfd ] || [ ! -d /dev/dri ]; then
+                ROCM_STATE=nodriver
+            else
+                if [ -d /sys/class/kfd/kfd/topology/nodes ]; then
+                    for node in /sys/class/kfd/kfd/topology/nodes/*; do
+                        [ -r "$node/properties" ] || continue
+                        ver=$(awk '$1 == "gfx_target_version" { print $2 }' "$node/properties" 2>/dev/null)
+                        case $ver in '' | 0 | *[!0-9]*) continue ;; esac
+                        case $ver in
+                            120001) arch=gfx1201 ;;
+                            120000) arch=gfx1200 ;;
+                            110000) arch=gfx1100 ;;
+                            110001) arch=gfx1101 ;;
+                            110002) arch=gfx1102 ;;
+                            100300) arch=gfx1030 ;;
+                            100301) arch=gfx1031 ;;
+                            100302) arch=gfx1032 ;;
+                            100304) arch=gfx1034 ;;
+                            100100) arch=gfx1010 ;;
+                            100101) arch=gfx1011 ;;
+                            100102) arch=gfx1012 ;;
+                            90008)  arch=gfx908 ;;
+                            90010)  arch=gfx90a ;;
+                            90402)  arch=gfx942 ;;
+                            90500)  arch=gfx950 ;;
+                            *)
+                                maj=$((ver / 10000))
+                                min=$(((ver % 10000) / 100))
+                                step=$((ver % 100))
+                                if [ "$maj" -eq 9 ] && [ "$min" -eq 0 ] && [ "$step" -eq 10 ]; then
+                                    arch=gfx90a
+                                else
+                                    arch="gfx${maj}${min}${step}"
+                                fi
+                                ;;
+                        esac
+                        if supported_rocm_arch "$arch"; then
+                            ROCM_ARCH=$arch
+                            break
+                        fi
+                        [ -n "$ROCM_ARCH" ] || ROCM_ARCH=$arch
+                    done
+                fi
+
+                if [ -z "$ROCM_ARCH" ]; then
+                    ROCM_STATE=nodriver
+                elif supported_rocm_arch "$ROCM_ARCH"; then
+                    # libggml-hip.so links libamdhip64.so.7, libhipblas.so.3 and librocblas.so.5 on the host.
+                    missing=
+                    for lib in libamdhip64.so.7 libhipblas.so.3 librocblas.so.5; do
+                        has_rocm_lib "$lib" || missing="${missing:+$missing, }$lib"
+                    done
+                    if [ -n "$missing" ]; then
+                        ROCM_STATE=missing_libs
+                        MISSING_ROCM_LIBS=$missing
+                    else
+                        ROCM_STATE=ready
+                    fi
+                else
+                    ROCM_STATE=unsupported
+                fi
+            fi
+        fi
+    fi
+
+    WANT_ROCM=false
+    case $ROCM_STATE in
+        ready)
+            if enabled "${OLLAYA_NO_ROCM:-}"; then
+                status "AMD GPU ($ROCM_ARCH) found; skipping the ROCm libraries (OLLAYA_NO_ROCM is set)"
+            elif [ "$ARCH" != amd64 ]; then
+                warn "AMD GPU ($ROCM_ARCH) found, but ROCm GPU acceleration is only packaged for x86-64 so far; Ollaya will use the CPU"
+            elif ! grep -q " ollaya-$PLATFORM-rocm\.tar\.zst\$" "$TMP/sha256sum.txt"; then
+                warn "AMD GPU ($ROCM_ARCH) found, but Ollaya $VERSION has no ROCm GPU package for $PLATFORM; Ollaya will use the CPU"
+            else
+                WANT_ROCM=true
+            fi
+            ;;
+        missing_libs)
+            warn "AMD GPU ($ROCM_ARCH) found, but required ROCm 7 runtime libraries are missing: $MISSING_ROCM_LIBS."
+            warn "Install ROCm 7 (see https://rocm.docs.amd.com/), add /opt/rocm/lib to /etc/ld.so.conf.d/ and run sudo ldconfig, then run this script again. Ollaya will use the CPU."
+            ;;
+        unsupported)
+            status "AMD GPU ($ROCM_ARCH) found, but it is not currently supported by Ollaya's ROCm runtime (supported discrete cards: gfx1200/1201, gfx1100-1102, gfx1030-1032/1034, gfx1010-1012, gfx908/90a/942/950). Ollaya will use the CPU."
+            ;;
+        nodriver)
+            warn "AMD GPU found, but /dev/kfd or /dev/dri was not found or accessible. Ollaya will use the CPU."
+            warn "Ensure the amdgpu driver and ROCm compute support are loaded (see https://rocm.docs.amd.com/)."
+            ;;
+        *) ;;
+    esac
+
     # --- download --------------------------------------------------------------------------
 
     if [ "$OS" = Darwin ] && [ -z "$ZSTD" ]; then
@@ -362,6 +551,22 @@ main() {
             fetch_verified "$MLX_ARCHIVE"
         fi
     fi
+    ROCM_ARCHIVE=
+    ROCM_KEEP=false
+    if $WANT_ROCM && grep -q " ollaya-$PLATFORM-rocm\.tar\.zst\$" "$TMP/sha256sum.txt"; then
+        ROCM_DIR=$PREFIX/lib/ollaya/rocm
+        ROCM_FILES=ollaya-$PLATFORM-rocm.sha256
+        if [ -f "$ROCM_DIR/FILES.sha256" ] && grep -q " $ROCM_FILES\$" "$TMP/sha256sum.txt" &&
+            (fetch_verified "$ROCM_FILES") >/dev/null 2>&1 && cmp -s "$TMP/$ROCM_FILES" "$ROCM_DIR/FILES.sha256" &&
+            cuda_intact "$ROCM_DIR"; then
+            ROCM_KEEP=true
+            status "The AMD ROCm libraries are unchanged; keeping the installed copy"
+        else
+            ROCM_ARCHIVE=ollaya-$PLATFORM-rocm.tar.zst
+            status "Downloading the AMD ROCm libraries"
+            fetch_verified "$ROCM_ARCHIVE"
+        fi
+    fi
 
     # --- install ---------------------------------------------------------------------------
 
@@ -381,6 +586,7 @@ main() {
     unpack "$BASE_ARCHIVE"
     [ -z "$CUDA_ARCHIVE" ] || unpack "$CUDA_ARCHIVE"
     [ -z "$MLX_ARCHIVE" ] || unpack "$MLX_ARCHIVE"
+    [ -z "$ROCM_ARCHIVE" ] || unpack "$ROCM_ARCHIVE"
     [ -f "$STAGE/bin/ollaya" ] || error "$BASE_ARCHIVE does not contain bin/ollaya"
     if [ -n "$CUDA_ARCHIVE" ] && [ ! -f "$STAGE/lib/ollaya/$CUDA_PACK/libonnxruntime_providers_cuda.so" ]; then
         error "$CUDA_ARCHIVE does not contain lib/ollaya/$CUDA_PACK"
@@ -396,6 +602,9 @@ main() {
     if $MLX_KEEP && [ -d "$PREFIX/share/doc/ollaya/mlx_metal" ] && [ ! -e "$STAGE/share/doc/ollaya/mlx_metal" ]; then
         $SUDO mv "$PREFIX/share/doc/ollaya/mlx_metal" "$STAGE/share/doc/ollaya/mlx_metal"
     fi
+    if $ROCM_KEEP && [ -d "$PREFIX/share/doc/ollaya/rocm" ] && [ ! -e "$STAGE/share/doc/ollaya/rocm" ]; then
+        $SUDO mv "$PREFIX/share/doc/ollaya/rocm" "$STAGE/share/doc/ollaya/rocm"
+    fi
     $SUDO rm -rf "$PREFIX/share/doc/ollaya"
     $SUDO mv "$STAGE/share/doc/ollaya" "$PREFIX/share/doc/ollaya"
     # The agent skill (0.4.0 and later). Only share/ollaya/skills is replaced: with a /usr prefix,
@@ -406,7 +615,7 @@ main() {
         $SUDO mv "$STAGE/share/ollaya/skills" "$PREFIX/share/ollaya/skills"
     fi
     # lib/ollaya is replaced as a whole, so libraries never outlive the binary they match. The
-    # CUDA libraries are the exception when they are byte for byte the ones this release ships:
+    # CUDA and ROCm libraries are the exception when they are byte for byte the ones this release ships:
     # they move into the new tree unchanged.
     if $CUDA_KEEP; then
         $SUDO mkdir -p "$STAGE/lib/ollaya"
@@ -417,6 +626,11 @@ main() {
         $SUDO mkdir -p "$STAGE/lib/ollaya"
         $SUDO rm -rf "$STAGE/lib/ollaya/mlx_metal"
         $SUDO mv "$PREFIX/lib/ollaya/mlx_metal" "$STAGE/lib/ollaya/mlx_metal"
+    fi
+    if $ROCM_KEEP; then
+        $SUDO mkdir -p "$STAGE/lib/ollaya"
+        $SUDO rm -rf "$STAGE/lib/ollaya/rocm"
+        $SUDO mv "$PREFIX/lib/ollaya/rocm" "$STAGE/lib/ollaya/rocm"
     fi
     $SUDO rm -rf "$PREFIX/lib/ollaya"
     if [ -d "$STAGE/lib/ollaya" ]; then
@@ -581,13 +795,15 @@ EOF
     status "Installed Ollaya $VERSION: $BINDIR/ollaya"
     if [ -n "$CUDA_ARCHIVE" ] || $CUDA_KEEP; then
         status "NVIDIA GPU support: $PREFIX/lib/ollaya/$CUDA_PACK${CUDA_DRIVER:+ (driver supports CUDA $CUDA_DRIVER)}"
-    elif [ "$NVIDIA_STATE" = none ] && [ "$OS" = Linux ]; then
-        status "No NVIDIA GPU found; Ollaya will run on the CPU"
+    elif [ -n "$ROCM_ARCHIVE" ] || $ROCM_KEEP; then
+        status "AMD GPU support: $PREFIX/lib/ollaya/rocm${ROCM_ARCH:+ ($ROCM_ARCH)}"
+    elif [ "$NVIDIA_STATE" = none ] && [ "$ROCM_STATE" = none ] && [ "$OS" = Linux ]; then
+        status "No supported GPU found; Ollaya will run on the CPU"
     fi
-    # winnow:e4b (the recommended model, 8 GB) with an NVIDIA GPU that holds it; laya, which is
+    # winnow:e4b (the recommended model, 8 GB) with an accelerator GPU that holds it; laya, which is
     # fast on any CPU and on small GPUs, otherwise.
     START_MODEL=laya
-    if { [ -n "$CUDA_ARCHIVE" ] || $CUDA_KEEP; } && [ -n "$GPU_MIB" ] && [ "$GPU_MIB" -ge 10240 ]; then
+    if { [ -n "$CUDA_ARCHIVE" ] || $CUDA_KEEP || [ -n "$ROCM_ARCHIVE" ] || $ROCM_KEEP; } && [ -n "$GPU_MIB" ] && [ "$GPU_MIB" -ge 10240 ]; then
         START_MODEL=winnow:e4b
     fi
     if $SERVICE; then

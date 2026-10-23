@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pos: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
     if pos.len() < 2 {
         return Err(
-            "usage: parity_llama <model-dir> <goldens.jsonl> [auto|cpu|cuda|cuda:<n>] [--latency]"
+            "usage: parity_llama <model-dir> <goldens.jsonl> [auto|cpu|cuda|cuda:<n>|rocm|rocm:<n>] [--latency]"
                 .into(),
         );
     }
@@ -97,9 +97,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "auto" => Target::Auto,
         "cpu" => Target::Cpu,
         "cuda" => Target::Device("CUDA0".into()),
+        "rocm" | "hip" => Target::Device("ROCm0".into()),
         d => Target::Device(
             d.strip_prefix("cuda:")
                 .map(|n| format!("CUDA{n}"))
+                .or_else(|| {
+                    d.strip_prefix("rocm:")
+                        .or_else(|| d.strip_prefix("hip:"))
+                        .map(|n| format!("ROCm{n}"))
+                })
                 .unwrap_or_else(|| d.to_owned()),
         ),
     };
@@ -110,9 +116,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|pack| lib.join(pack).join(ollaya_runner::llama::CUDA_BACKEND))
         .into_iter()
         .find(|p| p.is_file());
+    let rocm =
+        Some(lib.join("rocm").join(ollaya_runner::llama::ROCM_BACKEND)).filter(|p| p.is_file());
     let libs = Libraries {
         dir: lib.join("llama"),
         cuda,
+        rocm,
     };
     let calibration: CalibrationFile =
         serde_json::from_str(&std::fs::read_to_string(dir.join("calibration.json"))?)?;
@@ -270,6 +279,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         prob_diffs.last().copied().unwrap_or(0.0),
         percentile(&prob_diffs, 99),
     );
+    // An empty or truncated goldens file (an export that stopped early) must not pass the gate.
+    if questions == 0 {
+        return Err(format!("{}: no questions to check", goldens.display()).into());
+    }
 
     if latency {
         // A different state every request, so no request reuses the previous one's prefix.
