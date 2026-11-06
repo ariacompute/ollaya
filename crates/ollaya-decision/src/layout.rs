@@ -232,6 +232,7 @@ mod tests {
                 r#false: None,
                 r#true: None,
             },
+            ordinal: false,
             definition: json!({"type": "noul"}),
         }
     }

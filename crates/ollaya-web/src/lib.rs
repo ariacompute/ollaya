@@ -117,11 +117,9 @@ impl Model {
         tok.with_padding(None);
         Ok(Model {
             tokenizer: Tokenizer(tok),
-            layout: LayaLayout {
-                max_len: config.max_len,
-                head_max_len: config.head_max_len,
-                special: config.special_tokens,
-            },
+            // This runtime only serves `laya-markers-v1`; the constructor carries Laya's
+            // option-description and state-truncation defaults.
+            layout: LayaLayout::laya(config.max_len, config.head_max_len, config.special_tokens),
             min_markers: config.min_markers,
             calibration,
         })
