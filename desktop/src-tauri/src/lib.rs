@@ -37,14 +37,23 @@ const DOWNLOAD_URL: &str = "https://ollaya.dev/download";
 /// `search.json` does not list these yet; the fork injects (or coalesces) them so the desktop
 /// MODELS list always shows AFM-D with `afm-de:latest` and `afm-dd:latest`.
 fn afm_d_library_entry(extra_tags: &[Value]) -> Value {
+    // Sizes are the sums of the published `latest` manifest layers; refresh them when the AFM-D
+    // graphs are repackaged. The fields mirror ui/src/backend.ts's LibraryTag / LibraryModel and
+    // the afm-d entry in ui/src/mock.ts.
     let mut tags = vec![
         serde_json::json!({
             "name": "afm-de:latest",
-            "summary": "AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest."
+            "summary": "AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest.",
+            "size": 861_225_957_u64,
+            "params": null,
+            "languages": "English",
         }),
         serde_json::json!({
             "name": "afm-dd:latest",
-            "summary": "AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest."
+            "summary": "AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.",
+            "size": 2_679_711_967_u64,
+            "params": null,
+            "languages": "English",
         }),
     ];
     for t in extra_tags {
@@ -59,9 +68,15 @@ fn afm_d_library_entry(extra_tags: &[Value]) -> Value {
     }
     serde_json::json!({
         "name": "afm-d",
+        "title": "AFM-D",
         "description": "Aria Compute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.",
+        "publisher": "Aria Compute",
+        "license": "MIT",
         "caps": ["decision", "encoder", "decoder"],
+        "rank": 0,
+        "stats": null,
         "tags": tags,
+        "readme": null,
     })
 }
 
@@ -937,5 +952,40 @@ mod tests {
         let body = DecideRequest::new("qwen3guard", Value::String("Hi".into()), None);
         let body = serde_json::to_value(body).unwrap();
         assert!(body.get("questions").is_none());
+    }
+
+    #[test]
+    fn the_afm_d_stub_has_every_library_field() {
+        let models = with_afm_d(serde_json::json!([
+            {"name": "laya", "rank": 2},
+            {"name": "afm-dd", "tags": [{"name": "afm-dd:2b", "size": 1}]},
+            {"name": "afm-de", "tags": [{"name": "afm-de:latest", "size": 1}]},
+        ]));
+        let afm = &models[0];
+        assert_eq!(afm["name"].as_str(), Some("afm-d"));
+        for key in [
+            "title",
+            "description",
+            "publisher",
+            "license",
+            "caps",
+            "rank",
+            "stats",
+            "tags",
+            "readme",
+        ] {
+            assert!(afm.get(key).is_some(), "afm-d is missing {key}");
+        }
+        let tags = afm["tags"].as_array().unwrap();
+        assert_eq!(tags.len(), 3);
+        for tag in &tags[..2] {
+            for key in ["name", "summary", "size", "params", "languages"] {
+                assert!(tag.get(key).is_some(), "{tag} is missing {key}");
+            }
+        }
+        assert_eq!(tags[0]["name"].as_str(), Some("afm-de:latest"));
+        assert_eq!(tags[1]["name"].as_str(), Some("afm-dd:latest"));
+        assert_eq!(tags[2]["name"].as_str(), Some("afm-dd:2b"));
+        assert_eq!(models[1]["name"].as_str(), Some("laya"));
     }
 }

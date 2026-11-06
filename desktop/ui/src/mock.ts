@@ -22,13 +22,19 @@ const library: LibraryModel[] = [
   },
   {
     name: 'afm-d',
+    title: 'AFM-D',
     description:
       'Aria Compute AFM-D: Encoder (ModernBERT DecisionModel) and Decoder (MiniCPM5-2B SemIf). Dual Hub pulls via OLLAYA_HUB.',
+    publisher: 'Aria Compute',
+    license: 'MIT',
     caps: ['decision', 'encoder', 'decoder'],
+    rank: 0,
+    stats: null,
     tags: [
-      { name: 'afm-de:latest', summary: 'AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest.' },
-      { name: 'afm-dd:latest', summary: 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.' },
+      tag('afm-de:latest', 861_225_957, 'AFM-D Encoder (421M ModernBERT DecisionModel), layout afm-de-latest.'),
+      tag('afm-dd:latest', 2_679_711_967, 'AFM-D Decoder (MiniCPM5-2B SemIf Q8_0), layout afm-dd-latest.'),
     ],
+    readme: null,
   },
   {
     name: 'laya',
