@@ -10,9 +10,9 @@
 #                                    and on x86-64 Linux and Windows, and on linux-arm64 with --cuda,
 #                                    lib/ollaya/ollaya-cuda-runner (the GPU runner, see
 #                                    OLLAYA_CUDA_RUNNER)
-#   ollaya-linux-amd64-cuda.tar.zst  lib/ollaya/cuda_v13/ (Microsoft's ONNX Runtime CUDA build +
-#                                    NVIDIA CUDA/cuDNN libraries + libggml-cuda.so, llama.cpp's
-#                                    CUDA backend) + share/doc/ollaya/cuda_v13/ (notices, licenses)
+#   ollaya-linux-amd64-cuda.tar.zst  lib/ollaya/cuda_v13/ (Microsoft's ONNX Runtime CUDA build from
+#                                    a pinned wheel + NVIDIA CUDA/cuDNN libraries + libggml-cuda.so,
+#                                    llama.cpp's CUDA backend) + share/doc/ollaya/cuda_v13/ (notices)
 #   ollaya-linux-arm64-cuda.tar.zst  the same for aarch64 (DGX Spark), with ONNX Runtime from the
 #                                    onnxruntime-gpu wheel (docs/decisions/0005-arm64-cuda-pack.md)
 #   ollaya-darwin-arm64.tgz          same content as the darwin .tar.zst; stock macOS has no zstd
@@ -33,11 +33,11 @@
 # Options:
 #   --platform P  linux-amd64 | linux-arm64 | darwin-arm64 | windows-amd64 (default: this host)
 #   --cuda        also build the CUDA archive (linux-amd64, linux-arm64 and windows-amd64), with
-#                 Microsoft's ONNX Runtime GPU build (docs/decisions/0004-cuda-onnxruntime-builds.md,
-#                 0005-arm64-cuda-pack.md). Its runner is the base archive's
-#                 lib/ollaya/ollaya-cuda-runner.
+#                 Microsoft's ONNX Runtime GPU build from a pinned wheel
+#                 (docs/decisions/0004-cuda-onnxruntime-builds.md, 0005-arm64-cuda-pack.md). Its
+#                 runner is the base archive's lib/ollaya/ollaya-cuda-runner.
 #   --cuda12      also build the CUDA 12 archive (linux-amd64 and windows-amd64), with Microsoft's
-#                 cuda12 build. The same runner loads either pack.
+#                 pinned cuda12 wheel. The same runner loads either pack.
 #   --mlx         also build the MLX archive (darwin-arm64 only). The binary must have been built
 #                 with `--features ollaya-runner/mlx`, whose build script puts mlx.metallib in
 #                 <target-dir> (docs/decisions/0001-mlx-engine.md).
@@ -73,14 +73,22 @@ ORT_LICENSE_SHA256=2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a489
 ORT_NOTICES_SHA256=0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2
 ORT_NOTICES_WHEEL_URL=https://files.pythonhosted.org/packages/98/f8/dcbe7700dca82fa540035abd3c868fe5ad0f86af00b9a3db7c2e27d15c7d/onnxruntime-1.28.0-cp312-cp312-macosx_14_0_arm64.whl
 ORT_NOTICES_WHEEL_SHA256=26ff0fdd06efb6c155bae95387a09db1a2be89c7a03e4d0bffd5a171cc2826da
-# The CUDA pack runs Microsoft's ONNX Runtime GPU release instead, unmodified: pyke's CUDA build
-# has no kernels for sm_120 (docs/decisions/0004-cuda-onnxruntime-builds.md). Same minor version
-# as ORT_VERSION; bump together. The one exception is linux-arm64, pinned below.
-ORT_GPU_VERSION=1.28.2
-ORT_GPU_LINUX_SHA256=118ca8dbc4e4bb9b3b7fea137d796a89d957c9aa70e1dc3a5199a302cdd5bb32
-ORT_GPU_WINDOWS_SHA256=4b7a2d01a3cc96b12d06c8266af2c8f42c96365c4a0100d45fd874c71b4a2e19
-ORT_GPU12_LINUX_SHA256=e172d4d52bc4399ca36553bd9705389adae900b1f1e08ade50078db1c84b6c1f
-ORT_GPU12_WINDOWS_SHA256=5b5ceb06e90405c7de9acdaf5aa06d288768e6a1e5dc54337281e09c03fc60f9
+# The CUDA packs take Microsoft's ONNX Runtime from official package registries, unmodified:
+# pyke's CUDA build has no kernels for sm_120 (docs/decisions/0004-cuda-onnxruntime-builds.md),
+# and Microsoft's GitHub release assets are no longer available. Every wheel is pinned by sha256.
+# CUDA 13 x86-64: PyPI's onnxruntime-gpu 1.28.0, the same minor as the ort pin above.
+ORT_GPU_VERSION=1.28.0
+ORT_GPU_LINUX_URL=https://files.pythonhosted.org/packages/f2/18/e4e906d564af3dd84c2816118ce8e0c087d351ef69a819727b940fb01b6b/onnxruntime_gpu-1.28.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+ORT_GPU_LINUX_SHA256=3b3a63cecd239d72432cd44569d047de8f4d69e471cd5f60f7ac7fc8769be5ec
+ORT_GPU_WINDOWS_URL=https://files.pythonhosted.org/packages/e5/9e/92554acd080db68f549fd0e653fcf51a9dea7cb31e70c497714a9f2310fc/onnxruntime_gpu-1.28.0-cp312-cp312-win_amd64.whl
+ORT_GPU_WINDOWS_SHA256=3befb47dabd2843bb606a50abd6f14b1eb1324eb235d5e5f3b01dd8b8034af1f
+# CUDA 12 x86-64: PyPI's GPU wheel is CUDA 13 from 1.27 onwards; Microsoft publishes the CUDA 12.8
+# build on its Azure DevOps package feed. 1.29.0 is its stable build (docs/decisions/0004).
+ORT_GPU12_VERSION=1.29.0
+ORT_GPU12_LINUX_URL=https://aiinfra.pkgs.visualstudio.com/2692857e-05ef-43b4-ba9c-ccf1c22c437c/_packaging/9387c3aa-d9ad-4513-968c-383f6f7f53b8/pypi/download/onnxruntime-gpu/1.29/onnxruntime_gpu-1.29.0-cp312-cp312-manylinux_2_28_x86_64.whl
+ORT_GPU12_LINUX_SHA256=3338e3a5ad27ca5afd93c60732fa6fde308971cf424517817f3138fa7c5fcdb9
+ORT_GPU12_WINDOWS_URL=https://aiinfra.pkgs.visualstudio.com/2692857e-05ef-43b4-ba9c-ccf1c22c437c/_packaging/9387c3aa-d9ad-4513-968c-383f6f7f53b8/pypi/download/onnxruntime-gpu/1.29/onnxruntime_gpu-1.29.0-cp312-cp312-win_amd64.whl
+ORT_GPU12_WINDOWS_SHA256=118569fe3e60b8d09b13ffc0886b38d8adc62b368703dd0e5ad4dcd6155d8c79
 # linux-arm64 (DGX Spark): Microsoft ships no aarch64 GPU archive, so the pack takes the same three
 # libraries from the onnxruntime-gpu wheel on PyPI, whose aarch64 builds start at 1.29.0
 # (docs/decisions/0005-arm64-cuda-pack.md).
@@ -269,44 +277,59 @@ cuda_pack() {
             CUDA_REQUIREMENTS=$ROOT/packaging/cuda12-requirements.txt ;;
         *) die "no CUDA $M pack" ;;
     esac
-    # ORT_GPU_URL: where the ONNX Runtime GPU build comes from. ORT_GPU_VER: its version.
-    # ORT_GPU_DIR: the directory it unpacks to, which holds LICENSE and ThirdPartyNotices.txt.
-    # ORT_GPU_LIBS: the directory of its libraries. ORT_GPU_CORE: the core library's name there,
-    # copied to ORT_LIBRARY. Microsoft's GitHub archive, unless the platform says otherwise below.
-    ORT_GPU_VER=$ORT_GPU_VERSION
+    # Every source is a wheel (a zip): the libraries live in onnxruntime/capi/, and on Linux the
+    # core library carries its full version in the wheel. stage_cuda copies it to the soname the
+    # loader asks for (docs/decisions/0004-cuda-onnxruntime-builds.md and 0005-arm64-cuda-pack.md).
+    ORT_GPU_DIR=onnxruntime
+    ORT_GPU_LIBS=onnxruntime/capi
     ORT_GPU_CORE=$ORT_LIBRARY
+    ORT_GPU_SOURCE=PyPI
     CUDA_LIBS_REQUIRED="libcudart.so.$M libcublas.so.$M libcublasLt.so.$M libcufft.so.$CUFFT libcurand.so.10
 libnvrtc.so.$M libnvJitLink.so.$M libcudnn.so.9 libcudnn_graph.so.9"
     case $PLATFORM in
         windows-amd64)
-            ORT_GPU_ARCHIVE=onnxruntime-win-x64-gpu_cuda$M-$ORT_GPU_VER.zip
-            ORT_GPU_SHA256=$ORT_GPU_WINDOWS_SHA256
-            [ "$M" = 13 ] || ORT_GPU_SHA256=$ORT_GPU12_WINDOWS_SHA256
             CUDA_LIBS_REQUIRED="cudart64_$M.dll cublas64_$M.dll cublasLt64_$M.dll cufft64_$CUFFT.dll curand64_10.dll
 nvrtc64_${M}0_0.dll nvJitLink_${M}0_0.dll cudnn64_9.dll cudnn_graph64_9.dll"
             ;;
         linux-arm64)
-            # Microsoft's aarch64 GPU build ships only as a wheel (a zip), with the libraries in
-            # onnxruntime/capi/ and the core one under its full version (libonnxruntime.so.1.29.0);
-            # the loader asks for its soname (docs/decisions/0005-arm64-cuda-pack.md).
+            # Only CUDA 13 is supported here; --cuda12 is rejected when arguments are parsed.
             ORT_GPU_VER=$ORT_GPU_ARM64_VERSION
             ORT_GPU_URL=$ORT_GPU_ARM64_URL
-            ORT_GPU_ARCHIVE=${ORT_GPU_URL##*/}
             ORT_GPU_SHA256=$ORT_GPU_ARM64_SHA256
-            ORT_GPU_DIR=onnxruntime
-            ORT_GPU_LIBS=onnxruntime/capi
             ORT_GPU_CORE=libonnxruntime.so.$ORT_GPU_VER
+            ORT_GPU_ARCHIVE=${ORT_GPU_URL##*/}
             return
             ;;
-        *)
-            ORT_GPU_ARCHIVE=onnxruntime-linux-x64-gpu_cuda$M-$ORT_GPU_VER.tgz
-            ORT_GPU_SHA256=$ORT_GPU_LINUX_SHA256
-            [ "$M" = 13 ] || ORT_GPU_SHA256=$ORT_GPU12_LINUX_SHA256
-            ;;
     esac
-    ORT_GPU_URL=https://github.com/microsoft/onnxruntime/releases/download/v$ORT_GPU_VER/$ORT_GPU_ARCHIVE
-    ORT_GPU_DIR=${ORT_GPU_ARCHIVE%.*}
-    ORT_GPU_LIBS=$ORT_GPU_DIR/lib
+    # x86-64: CUDA 13 comes from PyPI, CUDA 12 from Microsoft's CUDA 12 package feed.
+    case $PLATFORM:$M in
+        windows-amd64:13)
+            ORT_GPU_VER=$ORT_GPU_VERSION
+            ORT_GPU_URL=$ORT_GPU_WINDOWS_URL
+            ORT_GPU_SHA256=$ORT_GPU_WINDOWS_SHA256
+            ;;
+        windows-amd64:12)
+            ORT_GPU_VER=$ORT_GPU12_VERSION
+            ORT_GPU_URL=$ORT_GPU12_WINDOWS_URL
+            ORT_GPU_SHA256=$ORT_GPU12_WINDOWS_SHA256
+            ORT_GPU_SOURCE="Microsoft's CUDA 12 feed on Azure DevOps"
+            ;;
+        linux-*:13)
+            ORT_GPU_VER=$ORT_GPU_VERSION
+            ORT_GPU_URL=$ORT_GPU_LINUX_URL
+            ORT_GPU_SHA256=$ORT_GPU_LINUX_SHA256
+            ORT_GPU_CORE=libonnxruntime.so.$ORT_GPU_VER
+            ;;
+        linux-*:12)
+            ORT_GPU_VER=$ORT_GPU12_VERSION
+            ORT_GPU_URL=$ORT_GPU12_LINUX_URL
+            ORT_GPU_SHA256=$ORT_GPU12_LINUX_SHA256
+            ORT_GPU_CORE=libonnxruntime.so.$ORT_GPU_VER
+            ORT_GPU_SOURCE="Microsoft's CUDA 12 feed on Azure DevOps"
+            ;;
+        *) die "no ONNX Runtime GPU wheel for $PLATFORM CUDA $M" ;;
+    esac
+    ORT_GPU_ARCHIVE=${ORT_GPU_URL##*/}
 }
 
 # is_cuda_lib NAME: whether the wheel file NAME goes into the pack cuda_pack set up.
@@ -578,7 +601,7 @@ stage_cuda() {
     mkdir -p "$lib" "$doc/licenses"
     have unzip || die "missing tool: unzip"
 
-    # Microsoft's ONNX Runtime, byte for byte. The TensorRT provider in the archive is left out.
+    # Microsoft's ONNX Runtime, byte for byte from a pinned wheel. Its TensorRT provider is left out.
     fetch "$ORT_GPU_URL" "$CACHE/$ORT_GPU_ARCHIVE" "$ORT_GPU_SHA256"
     case $ORT_GPU_ARCHIVE in
         *.zip | *.whl) unzip -q "$CACHE/$ORT_GPU_ARCHIVE" -d "$WORK" ;;
@@ -664,8 +687,8 @@ stage_cuda() {
         printf 'Ollaya CUDA %s accelerator package (%s): third-party notices\n\n' "$M" "$PLATFORM"
         printf 'Everything in lib/ollaya/%s is third-party software. None of it is covered by\n' "$CUDA_PACK"
         printf "Ollaya's Apache-2.0 license.\n\n"
-        printf '1. ONNX Runtime %s (https://github.com/microsoft/onnxruntime), Microsoft'"'"'s\n' \
-            "$ORT_GPU_VER"
+        printf '1. ONNX Runtime %s (https://onnxruntime.ai/), Microsoft'"'"'s GPU wheel from %s,\n' \
+            "$ORT_GPU_VER" "$ORT_GPU_SOURCE"
         printf '%s, unmodified: %s.\n' "$ORT_GPU_ARCHIVE" "$ORT_LIBRARY $ORT_PROVIDERS"
         printf 'License: MIT. The components ONNX Runtime bundles are listed in\n'
         printf 'onnxruntime-ThirdPartyNotices.txt next to this file.\n\n'
