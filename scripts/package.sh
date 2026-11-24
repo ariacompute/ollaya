@@ -601,14 +601,19 @@ stage_cuda() {
     mkdir -p "$lib" "$doc/licenses"
     have unzip || die "missing tool: unzip"
 
-    # Microsoft's ONNX Runtime, byte for byte from a pinned wheel. Its TensorRT provider is left out.
+    # Microsoft's ONNX Runtime, byte for byte from a pinned wheel. Each pack gets a fresh directory:
+    # the CUDA 12 wheel would otherwise ask to overwrite the CUDA 13 wheel's LICENSE in $WORK, with
+    # no stdin to answer in CI. Its TensorRT provider is left out.
     fetch "$ORT_GPU_URL" "$CACHE/$ORT_GPU_ARCHIVE" "$ORT_GPU_SHA256"
+    ort_work=$WORK/ort-$CUDA_PACK
+    rm -rf "$ort_work"
+    mkdir -p "$ort_work"
     case $ORT_GPU_ARCHIVE in
-        *.zip | *.whl) unzip -q "$CACHE/$ORT_GPU_ARCHIVE" -d "$WORK" ;;
-        *) tar -xzf "$CACHE/$ORT_GPU_ARCHIVE" -C "$WORK" ;;
+        *.zip | *.whl) unzip -oq "$CACHE/$ORT_GPU_ARCHIVE" -d "$ort_work" ;;
+        *) tar -xzf "$CACHE/$ORT_GPU_ARCHIVE" -C "$ort_work" ;;
     esac
-    ort=$WORK/$ORT_GPU_DIR
-    ort_libs=$WORK/$ORT_GPU_LIBS
+    ort=$ort_work/$ORT_GPU_DIR
+    ort_libs=$ort_work/$ORT_GPU_LIBS
     for p in $ORT_PROVIDERS; do
         [ -e "$ort_libs/$p" ] || die "$p not found in $ORT_GPU_ARCHIVE"
         cp -L "$ort_libs/$p" "$lib/$p"
